@@ -129,7 +129,6 @@ jobs:
             gh release create continuous \
               --prerelease \
               --title "持续构建" \
-              --notes "固定签名的 Android Release APK" \
-              --target continuous
+              --notes "固定签名的 Android Release APK"
           fi
           gh release upload continuous "wyyyy.apk#Android Release APK" --clobber
