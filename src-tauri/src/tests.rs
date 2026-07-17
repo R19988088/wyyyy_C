@@ -3,7 +3,8 @@ use crate::models::{CollectionSummary, CollectionType, Profile, SavedPosition, S
 use crate::netease::{
     eapi_payload, extract_set_cookie_values, merge_tracks, parse_account, parse_album_detail,
     parse_albums, parse_playback_url, parse_playlist_detail, parse_playlists, parse_podcast_detail,
-    parse_podcasts, parse_song_details,
+    parse_podcasts, parse_qr_key, parse_qr_login_status, parse_song_details, qr_data_url,
+    QrLoginStatus,
 };
 use crate::store::Store;
 use std::collections::BTreeMap;
@@ -53,6 +54,31 @@ fn cookie_extraction_keeps_equals_in_value() {
         extract_set_cookie_values(["MUSIC_U=token==; Path=/; HttpOnly", "__csrf=csrf; Path=/"]);
     assert_eq!(cookies.get("MUSIC_U").map(String::as_str), Some("token=="));
     assert_eq!(cookies.get("__csrf").map(String::as_str), Some("csrf"));
+}
+
+#[test]
+fn qr_login_parses_key_and_all_polling_states() {
+    assert_eq!(
+        parse_qr_key(r#"{"code":200,"unikey":"abc"}"#).unwrap(),
+        "abc"
+    );
+    for (code, expected) in [
+        (800, QrLoginStatus::Expired),
+        (801, QrLoginStatus::Waiting),
+        (802, QrLoginStatus::Scanned),
+        (803, QrLoginStatus::Confirmed),
+    ] {
+        assert_eq!(
+            parse_qr_login_status(&format!(r#"{{"code":{code}}}"#)).unwrap(),
+            expected,
+        );
+    }
+}
+
+#[test]
+fn qr_login_image_is_an_inline_svg() {
+    let image = qr_data_url("abc").unwrap();
+    assert!(image.starts_with("data:image/svg+xml;base64,"));
 }
 
 #[test]

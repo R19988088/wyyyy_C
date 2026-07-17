@@ -712,6 +712,62 @@ input:disabled {
   font-size: 15px;
 }
 
+.auth-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  margin-bottom: 20px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.auth-modes button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.auth-modes button.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 6px var(--shadow);
+}
+
+.qr-login {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  min-height: 318px;
+  align-content: center;
+}
+
+.qr-login-image {
+  display: block;
+  width: min(256px, 100%);
+  aspect-ratio: 1;
+  border: 10px solid #fff;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 18px 38px var(--shadow);
+}
+
+.qr-login-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.qr-login .form-error {
+  margin: 0;
+  text-align: center;
+}
+
 .settings-form {
   display: grid;
   gap: 14px;

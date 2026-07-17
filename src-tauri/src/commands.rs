@@ -1,5 +1,8 @@
-use crate::models::{CollectionSummary, CollectionType, Profile, SavedPosition, Session, Track};
-use crate::netease::NeteaseClient;
+use crate::models::{
+    CollectionSummary, CollectionType, Profile, QrLoginChallenge, QrLoginCheck, SavedPosition,
+    Session, Track,
+};
+use crate::netease::{NeteaseClient, QrLoginStatus};
 use crate::store::Store;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -74,6 +77,44 @@ pub async fn login_with_code(
         .login_api
         .verify_and_login(&phone, &country_code, &code)
         .await?;
+    complete_login(&state).await
+}
+
+#[tauri::command]
+pub async fn create_qr_login(state: State<'_, AppState>) -> Result<QrLoginChallenge, String> {
+    state.login_api.create_qr_login().await
+}
+
+#[tauri::command]
+pub async fn check_qr_login(
+    key: String,
+    state: State<'_, AppState>,
+) -> Result<QrLoginCheck, String> {
+    if key.trim().is_empty() || key.len() > 256 {
+        return Err("登录二维码 key 无效".into());
+    }
+    let status = state.login_api.check_qr_login(&key).await?;
+    match status {
+        QrLoginStatus::Expired => Ok(QrLoginCheck {
+            status: "expired".into(),
+            profile: None,
+        }),
+        QrLoginStatus::Waiting => Ok(QrLoginCheck {
+            status: "waiting".into(),
+            profile: None,
+        }),
+        QrLoginStatus::Scanned => Ok(QrLoginCheck {
+            status: "scanned".into(),
+            profile: None,
+        }),
+        QrLoginStatus::Confirmed => Ok(QrLoginCheck {
+            status: "confirmed".into(),
+            profile: Some(complete_login(&state).await?),
+        }),
+    }
+}
+
+async fn complete_login(state: &State<'_, AppState>) -> Result<Profile, String> {
     let cookies = state.login_api.cookies();
     if cookies.get("MUSIC_U").map_or(true, String::is_empty) {
         return Err("登录响应缺少 MUSIC_U Cookie".into());

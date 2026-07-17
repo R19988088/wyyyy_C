@@ -46,6 +46,16 @@ interface AccountPlaybackState {
   session?: SavedSession;
 }
 
+interface QrLoginChallenge {
+  key: string;
+  imageDataUrl: string;
+}
+
+interface QrLoginCheck {
+  status: "waiting" | "scanned" | "expired" | "confirmed";
+  profile?: Profile;
+}
+
 function readPositionStore(): Record<string, AccountPlaybackState> {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(positionsStorageKey) ?? "{}");
@@ -93,6 +103,22 @@ function dispatch(event: Event): void {
   state = transition.state;
   view.render(state);
   for (const effect of transition.effects) void runEffect(effect);
+}
+
+function isActiveQrLogin(key: string): boolean {
+  return state.drawerOpen
+    && state.authMode === "qr"
+    && state.auth.status === "qrReady"
+    && state.auth.key === key;
+}
+
+function acceptProfile(profile: Profile): void {
+  persistActivePlayback();
+  activeAccountId = profile.id;
+  dispatch({ type: "HISTORY_LOADED", history: readHistory(activeAccountId) });
+  const session = readSession(activeAccountId);
+  if (session) dispatch({ type: "STARTUP_RESTORE_REQUESTED", session });
+  dispatch({ type: "AUTHENTICATED", profile });
 }
 
 async function runEffect(effect: Effect): Promise<void> {
@@ -218,6 +244,36 @@ async function runEffect(effect: Effect): Promise<void> {
     case "SAVE_POSITION":
       savePosition(effect.collectionKey, effect.position, effect.wasPlaying);
       return;
+    case "CREATE_QR_LOGIN":
+      try {
+        const challenge = await invoke<QrLoginChallenge>("create_qr_login");
+        dispatch({
+          type: "QR_LOGIN_CREATED",
+          requestId: effect.requestId,
+          key: challenge.key,
+          imageDataUrl: challenge.imageDataUrl,
+        });
+      } catch (error) {
+        dispatch({ type: "QR_LOGIN_FAILED", requestId: effect.requestId, message: readableError(error) });
+      }
+      return;
+    case "CHECK_QR_LOGIN":
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      if (!isActiveQrLogin(effect.key)) return;
+      try {
+        const result = await invoke<QrLoginCheck>("check_qr_login", { key: effect.key });
+        if (result.status === "confirmed") {
+          if (!result.profile) throw new Error("二维码登录响应缺少账号资料");
+          acceptProfile(result.profile);
+        } else {
+          if (!isActiveQrLogin(effect.key)) return;
+          dispatch({ type: "QR_LOGIN_STATUS", key: effect.key, status: result.status });
+        }
+      } catch (error) {
+        if (!isActiveQrLogin(effect.key)) return;
+        dispatch({ type: "QR_LOGIN_FAILED", requestId: state.qrRequestId, message: readableError(error) });
+      }
+      return;
     case "SEND_LOGIN_CODE":
       try {
         await invoke("send_login_code", {
@@ -236,12 +292,7 @@ async function runEffect(effect: Effect): Promise<void> {
           phone: effect.phone,
           code: effect.code,
         });
-        persistActivePlayback();
-        activeAccountId = profile.id;
-        dispatch({ type: "HISTORY_LOADED", history: readHistory(activeAccountId) });
-        const session = readSession(activeAccountId);
-        if (session) dispatch({ type: "STARTUP_RESTORE_REQUESTED", session });
-        dispatch({ type: "AUTHENTICATED", profile });
+        acceptProfile(profile);
       } catch (error) {
         dispatch({ type: "AUTH_FAILED", message: readableError(error) });
       }

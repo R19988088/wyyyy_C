@@ -1,5 +1,9 @@
 use crate::crypto::{eapi_encrypt, weapi_encrypt};
-use crate::models::{CollectionSummary, CollectionType, Profile, Track};
+use crate::models::{CollectionSummary, CollectionType, Profile, QrLoginChallenge, Track};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use qrcode::render::svg;
+use qrcode::QrCode;
 use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_LANGUAGE, COOKIE, REFERER, SET_COOKIE};
 use reqwest::{Client, RequestBuilder, Url};
 use serde_json::{json, Map, Value};
@@ -9,9 +13,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 10; wyyyy) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QrLoginStatus {
+    Expired,
+    Waiting,
+    Scanned,
+    Confirmed,
+}
+
 pub(crate) struct NeteaseClient {
     http: Client,
     cookies: Mutex<BTreeMap<String, String>>,
+    qr_login_key: tokio::sync::Mutex<Option<String>>,
     device_id: String,
 }
 
@@ -27,6 +40,7 @@ impl NeteaseClient {
         Ok(Self {
             http,
             cookies: Mutex::new(BTreeMap::new()),
+            qr_login_key: tokio::sync::Mutex::new(None),
             device_id: random_hex(16),
         })
     }
@@ -96,6 +110,39 @@ impl NeteaseClient {
             return Err("登录响应缺少 MUSIC_U Cookie，请重试".into());
         }
         self.ensure_session().await
+    }
+
+    pub(crate) async fn create_qr_login(&self) -> Result<QrLoginChallenge, String> {
+        let mut active_key = self.qr_login_key.lock().await;
+        self.clear_cookies();
+        let raw = self
+            .post_weapi(
+                "https://music.163.com/weapi/login/qrcode/unikey",
+                json!({ "type": 3 }),
+                true,
+            )
+            .await?;
+        let key = parse_qr_key(&raw)?;
+        *active_key = Some(key.clone());
+        Ok(QrLoginChallenge {
+            image_data_url: qr_data_url(&key)?,
+            key,
+        })
+    }
+
+    pub(crate) async fn check_qr_login(&self, key: &str) -> Result<QrLoginStatus, String> {
+        let active_key = self.qr_login_key.lock().await;
+        if active_key.as_deref() != Some(key) {
+            return Err("登录二维码已失效".into());
+        }
+        let raw = self
+            .post_weapi(
+                "https://music.163.com/weapi/login/qrcode/client/login",
+                json!({ "key": key, "type": 3 }),
+                true,
+            )
+            .await?;
+        parse_qr_login_status(&raw)
     }
 
     pub(crate) async fn profile(&self) -> Result<Profile, String> {
@@ -487,6 +534,43 @@ pub(crate) fn extract_set_cookie_values<'a>(
         .filter(|(name, _)| !name.trim().is_empty())
         .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
         .collect()
+}
+
+pub(crate) fn parse_qr_key(raw: &str) -> Result<String, String> {
+    let root = parse_root(raw, "二维码 key")?;
+    if code(&root) != Some(200) {
+        return Err(format!("创建登录二维码失败：{}", api_message(&root)));
+    }
+    clean_string(root.get("unikey"))
+        .or_else(|| {
+            root.get("data")
+                .and_then(|data| clean_string(data.get("unikey")))
+        })
+        .ok_or_else(|| "二维码响应缺少 unikey".to_string())
+}
+
+pub(crate) fn parse_qr_login_status(raw: &str) -> Result<QrLoginStatus, String> {
+    let root = parse_root(raw, "二维码状态")?;
+    match code(&root) {
+        Some(800) => Ok(QrLoginStatus::Expired),
+        Some(801) => Ok(QrLoginStatus::Waiting),
+        Some(802) => Ok(QrLoginStatus::Scanned),
+        Some(803) => Ok(QrLoginStatus::Confirmed),
+        _ => Err(format!("检查登录二维码失败：{}", api_message(&root))),
+    }
+}
+
+pub(crate) fn qr_data_url(key: &str) -> Result<String, String> {
+    let url = format!("https://music.163.com/login?codekey={key}");
+    let code =
+        QrCode::new(url.as_bytes()).map_err(|error| format!("生成登录二维码失败：{error}"))?;
+    let svg = code
+        .render::<svg::Color>()
+        .min_dimensions(256, 256)
+        .dark_color(svg::Color("#171717"))
+        .light_color(svg::Color("#ffffff"))
+        .build();
+    Ok(format!("data:image/svg+xml;base64,{}", BASE64.encode(svg)))
 }
 
 pub(crate) fn parse_account(raw: &str) -> Result<Profile, String> {

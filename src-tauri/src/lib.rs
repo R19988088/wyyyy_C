@@ -23,6 +23,8 @@ pub fn run() {
             commands::restore_session,
             commands::send_login_code,
             commands::login_with_code,
+            commands::create_qr_login,
+            commands::check_qr_login,
             commands::get_library,
             commands::get_collection_tracks,
             commands::get_stream_url,

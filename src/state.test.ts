@@ -57,6 +57,171 @@ test("country codes are sent as digits without a display prefix", () => {
   assert.equal(normalizeCountryCode(" 86 "), "86");
 });
 
+test("signed-out settings default to QR login and start a challenge", () => {
+  const before = initialState();
+  const result = update(before, { type: "DRAWER_SET", open: true });
+
+  assert.equal(result.state.authMode, "qr");
+  assert.deepEqual(result.state.auth, { status: "qrLoading" });
+  assert.deepEqual(result.effects, [{ type: "CREATE_QR_LOGIN", requestId: 1 }]);
+});
+
+test("a created QR challenge starts polling while settings stay open", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    auth: { status: "qrLoading" },
+  };
+  const result = update(state, {
+    type: "QR_LOGIN_CREATED",
+    requestId: 0,
+    key: "key-1",
+    imageDataUrl: "data:image/svg+xml;base64,abc",
+  });
+
+  assert.equal(result.state.auth.status, "qrReady");
+  assert.equal(result.state.auth.stage, "waiting");
+  assert.deepEqual(result.effects, [{ type: "CHECK_QR_LOGIN", key: "key-1" }]);
+});
+
+test("closing settings stops QR polling and discards the challenge", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    auth: {
+      status: "qrReady",
+      stage: "scanned",
+      key: "key-1",
+      imageDataUrl: "data:image/svg+xml;base64,abc",
+    },
+  };
+  const result = update(state, { type: "DRAWER_SET", open: false });
+
+  assert.deepEqual(result.state.auth, { status: "signedOut" });
+  assert.deepEqual(result.effects, []);
+});
+
+test("switching to phone login stops QR polling", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    auth: {
+      status: "qrReady",
+      stage: "waiting",
+      key: "key-1",
+      imageDataUrl: "data:image/svg+xml;base64,abc",
+    },
+  };
+  const result = update(state, { type: "AUTH_MODE_SELECTED", mode: "phone" });
+
+  assert.equal(result.state.authMode, "phone");
+  assert.deepEqual(result.state.auth, { status: "signedOut" });
+  assert.deepEqual(result.effects, []);
+});
+
+test("QR polling follows waiting and scanned states until expiry", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    auth: {
+      status: "qrReady",
+      stage: "waiting",
+      key: "key-1",
+      imageDataUrl: "data:image/svg+xml;base64,abc",
+    },
+  };
+
+  const scanned = update(state, { type: "QR_LOGIN_STATUS", key: "key-1", status: "scanned" });
+  assert.equal(scanned.state.auth.stage, "scanned");
+  assert.deepEqual(scanned.effects, [{ type: "CHECK_QR_LOGIN", key: "key-1" }]);
+
+  const waiting = update(scanned.state, { type: "QR_LOGIN_STATUS", key: "key-1", status: "waiting" });
+  assert.equal(waiting.state.auth.stage, "waiting");
+  assert.deepEqual(waiting.effects, [{ type: "CHECK_QR_LOGIN", key: "key-1" }]);
+
+  const expired = update(waiting.state, { type: "QR_LOGIN_STATUS", key: "key-1", status: "expired" });
+  assert.deepEqual(expired.state.auth, { status: "qrExpired" });
+  assert.deepEqual(expired.effects, []);
+});
+
+test("a stale QR polling result is ignored", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    auth: {
+      status: "qrReady",
+      stage: "waiting",
+      key: "current-key",
+      imageDataUrl: "data:image/svg+xml;base64,abc",
+    },
+  };
+  const result = update(state, { type: "QR_LOGIN_STATUS", key: "stale-key", status: "scanned" });
+
+  assert.deepEqual(result.state, state);
+  assert.deepEqual(result.effects, []);
+});
+
+test("a stale QR creation result is ignored after refresh", () => {
+  const opened = update(initialState(), { type: "DRAWER_SET", open: true });
+  const firstRequestId = opened.effects[0].requestId;
+  const refreshed = update(opened.state, { type: "QR_LOGIN_REFRESH" });
+  const secondRequestId = refreshed.effects[0].requestId;
+  const stale = update(refreshed.state, {
+    type: "QR_LOGIN_CREATED",
+    requestId: firstRequestId,
+    key: "stale-key",
+    imageDataUrl: "data:image/svg+xml;base64,stale",
+  });
+
+  assert.notEqual(firstRequestId, secondRequestId);
+  assert.deepEqual(stale.state, refreshed.state);
+  assert.deepEqual(stale.effects, []);
+});
+
+test("a stale QR failure cannot replace a newer challenge", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    qrRequestId: 2,
+    auth: {
+      status: "qrReady",
+      stage: "waiting",
+      key: "current-key",
+      imageDataUrl: "data:image/svg+xml;base64,current",
+    },
+  };
+  const result = update(state, { type: "QR_LOGIN_FAILED", requestId: 1, message: "stale" });
+
+  assert.deepEqual(result.state, state);
+  assert.deepEqual(result.effects, []);
+});
+
+test("a late phone failure does not replace QR login", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    authMode: "qr",
+    auth: { status: "qrLoading" },
+  };
+  const result = update(state, { type: "AUTH_FAILED", message: "late phone failure" });
+
+  assert.deepEqual(result.state, state);
+  assert.deepEqual(result.effects, []);
+});
+
+test("a late phone code response does not replace QR login", () => {
+  const state = {
+    ...initialState(),
+    drawerOpen: true,
+    authMode: "qr",
+    auth: { status: "qrLoading" },
+  };
+  const result = update(state, { type: "CODE_SENT", resendAt: 123 });
+
+  assert.deepEqual(result.state, state);
+  assert.deepEqual(result.effects, []);
+});
+
 test("focus movement is clamped to the collection bounds", () => {
   assert.equal(moveFocus(0, -1, 3), 0);
   assert.equal(moveFocus(1, 1, 3), 2);
@@ -322,6 +487,23 @@ test("signing out clears playback and reloads with a new account generation", ()
   assert.deepEqual(result.effects, [
     { type: "RESET_AUDIO" },
     { type: "LOAD_LIBRARY", category: "album", generation: 1 },
+  ]);
+});
+
+test("signing out while QR settings are open creates a fresh challenge", () => {
+  const before = {
+    ...readyState(),
+    drawerOpen: true,
+    authMode: "qr",
+    auth: { status: "authenticated", profile: { id: "old-account", nickname: "Old" } },
+  };
+  const result = update(before, { type: "LOGGED_OUT" });
+
+  assert.deepEqual(result.state.auth, { status: "qrLoading" });
+  assert.deepEqual(result.effects, [
+    { type: "RESET_AUDIO" },
+    { type: "LOAD_LIBRARY", category: "album", generation: 1 },
+    { type: "CREATE_QR_LOGIN", requestId: 1 },
   ]);
 });
 

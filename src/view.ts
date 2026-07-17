@@ -5,6 +5,7 @@ import {
   decideVerticalNavigation,
   normalizeCountryCode,
   type AppState,
+  type AuthMode,
   type AuthState,
   type Category,
   type CollectionSummary,
@@ -279,8 +280,14 @@ export function createView(dispatch: Dispatch): View {
     }
   });
   authPanel.addEventListener("click", (event) => {
+    const mode = (event.target as Element).closest<HTMLButtonElement>("[data-auth-mode]")?.dataset.authMode as AuthMode | undefined;
+    if (mode) {
+      dispatch({ type: "AUTH_MODE_SELECTED", mode });
+      return;
+    }
     const action = (event.target as Element).closest<HTMLButtonElement>("[data-auth-action]")?.dataset.authAction;
     if (action === "logout") dispatch({ type: "LOGOUT" });
+    if (action === "refresh-qr") dispatch({ type: "QR_LOGIN_REFRESH" });
     if (action === "resend") {
       const countryCode = normalizeCountryCode(
         authPanel.querySelector<HTMLInputElement>("[name=countryCode]")?.value ?? "86",
@@ -423,8 +430,8 @@ export function createView(dispatch: Dispatch): View {
     playerError.hidden = !error;
   }
 
-  function renderAuth(auth: AuthState): void {
-    const signature = JSON.stringify(auth);
+  function renderAuth(auth: AuthState, authMode: AuthMode): void {
+    const signature = JSON.stringify([auth, authMode]);
     if (signature === authSignature) return;
     authSignature = signature;
     authPanel.replaceChildren();
@@ -448,6 +455,62 @@ export function createView(dispatch: Dispatch): View {
       logout.dataset.authAction = "logout";
       logout.textContent = "退出登录";
       section.append(account, logout);
+      authPanel.append(section);
+      return;
+    }
+
+    const modes = document.createElement("div");
+    modes.className = "auth-modes";
+    modes.setAttribute("role", "group");
+    modes.setAttribute("aria-label", "登录方式");
+    for (const [mode, label] of [["qr", "二维码"], ["phone", "手机号"]] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.authMode = mode;
+      button.setAttribute("aria-pressed", String(authMode === mode));
+      button.classList.toggle("is-active", authMode === mode);
+      button.textContent = label;
+      modes.append(button);
+    }
+    section.append(modes);
+
+    if (authMode === "qr") {
+      const qrPanel = document.createElement("div");
+      qrPanel.className = "qr-login";
+      if (auth.status === "qrReady") {
+        const image = document.createElement("img");
+        image.className = "qr-login-image";
+        image.src = auth.imageDataUrl;
+        image.alt = "网易云音乐登录二维码";
+        const status = document.createElement("p");
+        status.className = "qr-login-status";
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        status.textContent = auth.stage === "scanned" ? "已扫码，请在手机上确认" : "请使用网易云音乐扫码";
+        qrPanel.append(image, status);
+      } else {
+        const status = document.createElement("p");
+        status.className = auth.status === "qrError" ? "form-error" : "qr-login-status";
+        status.setAttribute("role", auth.status === "qrError" ? "alert" : "status");
+        status.setAttribute("aria-live", "polite");
+        status.textContent = auth.status === "qrLoading"
+          ? "正在生成二维码…"
+          : auth.status === "qrExpired"
+            ? "二维码已过期"
+            : auth.status === "qrError"
+              ? auth.message
+              : "准备二维码…";
+        qrPanel.append(status);
+        if (auth.status === "qrExpired" || auth.status === "qrError") {
+          const refresh = document.createElement("button");
+          refresh.type = "button";
+          refresh.className = "secondary-button wide-button";
+          refresh.dataset.authAction = "refresh-qr";
+          refresh.textContent = "刷新二维码";
+          qrPanel.append(refresh);
+        }
+      }
+      section.append(qrPanel);
       authPanel.append(section);
       return;
     }
@@ -529,7 +592,7 @@ export function createView(dispatch: Dispatch): View {
       renderCovers(state);
       renderTracks(state);
       renderPlayer(state);
-      renderAuth(state.auth);
+      renderAuth(state.auth, state.authMode);
       updateResend(state.auth);
 
       drawerLayer.classList.toggle("is-open", state.drawerOpen);

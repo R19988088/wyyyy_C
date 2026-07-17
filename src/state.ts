@@ -1,5 +1,6 @@
 export type Category = "album" | "playlist" | "podcast";
 export type Surface = "covers" | "tracks";
+export type AuthMode = "qr" | "phone";
 
 export interface CollectionSummary {
   id: string;
@@ -65,6 +66,10 @@ export type PlayerState =
 
 export type AuthState =
   | { status: "signedOut" }
+  | { status: "qrLoading" }
+  | { status: "qrReady"; key: string; imageDataUrl: string; stage: "waiting" | "scanned" }
+  | { status: "qrExpired" }
+  | { status: "qrError"; message: string }
   | { status: "sendingCode"; countryCode: string; phone: string }
   | { status: "codeSent"; countryCode: string; phone: string; resendAt: number }
   | { status: "submitting"; countryCode: string; phone: string }
@@ -84,6 +89,8 @@ export interface AppState {
   requestSerial: number;
   history: Record<string, SavedPosition>;
   drawerOpen: boolean;
+  authMode: AuthMode;
+  qrRequestId: number;
   auth: AuthState;
   notice?: string;
 }
@@ -111,6 +118,11 @@ export type Event =
   | { type: "AUDIO_TIME"; position: number; duration: number; updatedAt: number }
   | { type: "AUDIO_ERROR"; message: string }
   | { type: "DRAWER_SET"; open: boolean }
+  | { type: "AUTH_MODE_SELECTED"; mode: AuthMode }
+  | { type: "QR_LOGIN_REFRESH" }
+  | { type: "QR_LOGIN_CREATED"; requestId: number; key: string; imageDataUrl: string }
+  | { type: "QR_LOGIN_STATUS"; key: string; status: "waiting" | "scanned" | "expired" }
+  | { type: "QR_LOGIN_FAILED"; requestId: number; message: string }
   | { type: "SEND_CODE"; countryCode: string; phone: string }
   | { type: "CODE_SENT"; resendAt: number }
   | { type: "SUBMIT_CODE"; countryCode: string; phone: string; code: string }
@@ -134,6 +146,8 @@ export type Effect =
   | { type: "PAUSE_AUDIO" }
   | { type: "SEEK_AUDIO"; position: number }
   | { type: "SAVE_POSITION"; collectionKey: string; position: SavedPosition; wasPlaying: boolean }
+  | { type: "CREATE_QR_LOGIN"; requestId: number }
+  | { type: "CHECK_QR_LOGIN"; key: string }
   | { type: "SEND_LOGIN_CODE"; countryCode: string; phone: string }
   | { type: "LOGIN"; countryCode: string; phone: string; code: string }
   | { type: "LOGOUT" };
@@ -159,6 +173,8 @@ export function initialState(history: Record<string, SavedPosition> = {}): AppSt
     requestSerial: 0,
     history,
     drawerOpen: false,
+    authMode: "qr",
+    qrRequestId: 0,
     auth: { status: "signedOut" },
   };
 }
@@ -673,8 +689,83 @@ export function update(state: AppState, event: Event): Transition {
         effects: [],
       };
     }
-    case "DRAWER_SET":
-      return { state: { ...state, drawerOpen: event.open }, effects: [] };
+    case "DRAWER_SET": {
+      if (!event.open) {
+        const auth = state.auth.status.startsWith("qr") ? { status: "signedOut" } as const : state.auth;
+        return { state: { ...state, drawerOpen: false, auth }, effects: [] };
+      }
+      if (state.authMode === "qr" && state.auth.status === "signedOut") {
+        const requestId = state.qrRequestId + 1;
+        return {
+          state: { ...state, drawerOpen: true, qrRequestId: requestId, auth: { status: "qrLoading" } },
+          effects: [{ type: "CREATE_QR_LOGIN", requestId }],
+        };
+      }
+      return { state: { ...state, drawerOpen: true }, effects: [] };
+    }
+    case "AUTH_MODE_SELECTED": {
+      if (event.mode === state.authMode) return { state, effects: [] };
+      if (event.mode === "qr") {
+        const requestId = state.qrRequestId + 1;
+        return {
+          state: { ...state, authMode: "qr", qrRequestId: requestId, auth: { status: "qrLoading" } },
+          effects: state.drawerOpen ? [{ type: "CREATE_QR_LOGIN", requestId }] : [],
+        };
+      }
+      return {
+        state: { ...state, authMode: "phone", auth: { status: "signedOut" } },
+        effects: [],
+      };
+    }
+    case "QR_LOGIN_REFRESH": {
+      if (!state.drawerOpen || state.authMode !== "qr") return { state, effects: [] };
+      const requestId = state.qrRequestId + 1;
+      return {
+        state: { ...state, qrRequestId: requestId, auth: { status: "qrLoading" } },
+        effects: [{ type: "CREATE_QR_LOGIN", requestId }],
+      };
+    }
+    case "QR_LOGIN_CREATED":
+      if (
+        !state.drawerOpen
+        || state.authMode !== "qr"
+        || state.auth.status !== "qrLoading"
+        || event.requestId !== state.qrRequestId
+      ) {
+        return { state, effects: [] };
+      }
+      return {
+        state: {
+          ...state,
+          auth: {
+            status: "qrReady",
+            key: event.key,
+            imageDataUrl: event.imageDataUrl,
+            stage: "waiting",
+          },
+        },
+        effects: [{ type: "CHECK_QR_LOGIN", key: event.key }],
+      };
+    case "QR_LOGIN_STATUS":
+      if (
+        !state.drawerOpen
+        || state.authMode !== "qr"
+        || state.auth.status !== "qrReady"
+        || state.auth.key !== event.key
+      ) {
+        return { state, effects: [] };
+      }
+      if (event.status === "expired") {
+        return { state: { ...state, auth: { status: "qrExpired" } }, effects: [] };
+      }
+      return {
+        state: { ...state, auth: { ...state.auth, stage: event.status } },
+        effects: [{ type: "CHECK_QR_LOGIN", key: event.key }],
+      };
+    case "QR_LOGIN_FAILED":
+      return state.drawerOpen && state.authMode === "qr" && event.requestId === state.qrRequestId
+        ? { state: { ...state, auth: { status: "qrError", message: event.message } }, effects: [] }
+        : { state, effects: [] };
     case "SEND_CODE":
       return {
         state: {
@@ -745,6 +836,7 @@ export function update(state: AppState, event: Event): Transition {
       };
       }
     case "AUTH_FAILED": {
+      if (state.authMode !== "phone") return { state, effects: [] };
       const countryCode = "countryCode" in state.auth ? state.auth.countryCode : "86";
       const phone = "phone" in state.auth ? state.auth.phone : "";
       const phase = state.auth.status === "submitting" ? "login" : "send";
@@ -768,13 +860,16 @@ export function update(state: AppState, event: Event): Transition {
     case "LOGGED_OUT":
       {
       const generation = state.accountGeneration + 1;
+      const shouldCreateQr = state.drawerOpen && state.authMode === "qr";
+      const qrRequestId = shouldCreateQr ? state.qrRequestId + 1 : state.qrRequestId;
       return {
         state: {
           ...state,
           surface: "covers",
           accountGeneration: generation,
           requestSerial: 0,
-          auth: { status: "signedOut" },
+          qrRequestId,
+          auth: shouldCreateQr ? { status: "qrLoading" } : { status: "signedOut" },
           library: {
             album: state.category === "album" ? { status: "loading" } : { status: "idle" },
             playlist: state.category === "playlist" ? { status: "loading" } : { status: "idle" },
@@ -790,6 +885,7 @@ export function update(state: AppState, event: Event): Transition {
         effects: [
           { type: "RESET_AUDIO" },
           { type: "LOAD_LIBRARY", category: state.category, generation },
+          ...(shouldCreateQr ? [{ type: "CREATE_QR_LOGIN" as const, requestId: qrRequestId }] : []),
         ],
       };
       }

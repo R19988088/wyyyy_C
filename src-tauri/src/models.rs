@@ -51,6 +51,21 @@ pub struct SavedPosition {
     pub updated_at: u64,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QrLoginChallenge {
+    pub key: String,
+    pub image_data_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QrLoginCheck {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Session {
     pub profile: Profile,

@@ -25,4 +25,6 @@ hex = "0.4"
 md-5 = "0.10"
 num-bigint = "0.4"
 rand = "0.8"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+tokio = { version = "1", features = ["sync"] }
 tempfile = "3"
