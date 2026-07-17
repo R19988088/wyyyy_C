@@ -1,0 +1,134 @@
+name: Android Release APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-continuous-release
+  cancel-in-progress: false
+
+jobs:
+  build-release-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 29.0.14206865
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      EXPECTED_CERT_SHA256: 0AAFC0BA0891648561EFCC32EA2215B84D144594F64F35B2D8E31B7EB803C0B1
+      RUST_VERSION: 1.95.0
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Rust and Android target
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          rustup target add aarch64-linux-android
+
+      - name: Install Linux and Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Install dependencies and run tests
+        run: |
+          npm ci
+          npm test
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Set monotonic Android version code
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'src-tauri/tauri.conf.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          config.bundle.android = {
+            ...(config.bundle.android ?? {}),
+            versionCode: 1000 + Number(process.env.GITHUB_RUN_NUMBER),
+          };
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+
+      - name: Initialize Android project
+        run: npm run tauri -- android init --ci --skip-targets-install
+
+      - name: Build unsigned release APK
+        run: npm run tauri -- android build --apk --target aarch64 --ci
+
+      - name: Align, sign, and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+
+          mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk')
+          test "${#apks[@]}" -eq 1
+
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          keystore="$RUNNER_TEMP/wyyyy-release.jks"
+          aligned_apk="$RUNNER_TEMP/wyyyy-aligned.apk"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+
+          "$build_tools/zipalign" -P 16 -f -v 4 "${apks[0]}" "$aligned_apk"
+          "$build_tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out wyyyy.apk \
+            "$aligned_apk"
+
+          verify_output=$("$build_tools/apksigner" verify --verbose --print-certs wyyyy.apk)
+          printf '%s\n' "$verify_output"
+          actual_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$verify_output")
+          test "${actual_cert,,}" = "${EXPECTED_CERT_SHA256,,}"
+          "$build_tools/zipalign" -c -P 16 -v 4 wyyyy.apk
+          test "$(apkanalyzer manifest application-id wyyyy.apk)" = "com.r19988088.wyyyy"
+          test "$(apkanalyzer manifest debuggable wyyyy.apk)" = "false"
+          test "$(unzip -Z1 wyyyy.apk | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u)" = "arm64-v8a"
+          sha256sum wyyyy.apk
+
+      - name: Publish direct APK release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag --force continuous "$GITHUB_SHA"
+          git push origin refs/tags/continuous --force
+          if ! gh release view continuous >/dev/null 2>&1; then
+            gh release create continuous \
+              --prerelease \
+              --title "持续构建" \
+              --notes "固定签名的 Android Release APK" \
+              --target continuous
+          fi
+          gh release upload continuous "wyyyy.apk#Android Release APK" --clobber
