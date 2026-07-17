@@ -94,6 +94,7 @@ jobs:
           test "${#apks[@]}" -eq 1
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          apk_analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           keystore="$RUNNER_TEMP/wyyyy-release.jks"
           aligned_apk="$RUNNER_TEMP/wyyyy-aligned.apk"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
@@ -113,8 +114,8 @@ jobs:
           actual_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$verify_output")
           test "${actual_cert,,}" = "${EXPECTED_CERT_SHA256,,}"
           "$build_tools/zipalign" -c -P 16 -v 4 wyyyy.apk
-          test "$(apkanalyzer manifest application-id wyyyy.apk)" = "com.r19988088.wyyyy"
-          test "$(apkanalyzer manifest debuggable wyyyy.apk)" = "false"
+          test "$("$apk_analyzer" manifest application-id wyyyy.apk)" = "com.r19988088.wyyyy"
+          test "$("$apk_analyzer" manifest debuggable wyyyy.apk)" = "false"
           test "$(unzip -Z1 wyyyy.apk | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u)" = "arm64-v8a"
           sha256sum wyyyy.apk
 
