@@ -392,7 +392,7 @@ pub(crate) fn eapi_payload(
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
-    let mut header = BTreeMap::from([
+    let mut header: BTreeMap<String, String> = BTreeMap::from([
         (
             "osver".into(),
             cookie_or(
@@ -580,7 +580,7 @@ pub(crate) fn parse_albums(raw: &str) -> Result<Vec<CollectionSummary>, String> 
             let subtitle = data
                 .get("artists")
                 .and_then(Value::as_array)
-                .map(artist_names)
+                .map(|items| artist_names(items))
                 .unwrap_or_default();
             Some(CollectionSummary {
                 id: id.to_string(),
@@ -715,7 +715,7 @@ pub(crate) fn parse_podcast_detail(
                 .get("ar")
                 .and_then(Value::as_array)
                 .or_else(|| song.get("artists").and_then(Value::as_array))
-                .map(artist_names)
+                .map(|items| artist_names(items))
                 .filter(|name| !name.is_empty())
                 .or_else(|| {
                     program
@@ -800,7 +800,7 @@ fn parse_track_with_cover(value: &Value, fallback_cover: Option<String>) -> Opti
         .get("ar")
         .and_then(Value::as_array)
         .or_else(|| value.get("artists").and_then(Value::as_array))
-        .map(artist_names)
+        .map(|items| artist_names(items))
         .unwrap_or_default();
     let album = value.get("al").or_else(|| value.get("album"));
     let duration_ms = value_u64(value.get("dt"))
