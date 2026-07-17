@@ -3,6 +3,7 @@ import {
   collectionKey,
   coverSlots,
   decideVerticalNavigation,
+  normalizeCountryCode,
   type AppState,
   type AuthState,
   type Category,
@@ -269,7 +270,7 @@ export function createView(dispatch: Dispatch): View {
     event.preventDefault();
     const form = event.target as HTMLFormElement;
     const data = new FormData(form);
-    const countryCode = String(data.get("countryCode") ?? "+86").trim();
+    const countryCode = normalizeCountryCode(String(data.get("countryCode") ?? "86"));
     const phone = String(data.get("phone") ?? "").trim();
     if (form.id === "phone-form") {
       dispatch({ type: "SEND_CODE", countryCode, phone });
@@ -281,7 +282,9 @@ export function createView(dispatch: Dispatch): View {
     const action = (event.target as Element).closest<HTMLButtonElement>("[data-auth-action]")?.dataset.authAction;
     if (action === "logout") dispatch({ type: "LOGOUT" });
     if (action === "resend") {
-      const countryCode = authPanel.querySelector<HTMLInputElement>("[name=countryCode]")?.value ?? "+86";
+      const countryCode = normalizeCountryCode(
+        authPanel.querySelector<HTMLInputElement>("[name=countryCode]")?.value ?? "86",
+      );
       const phone = authPanel.querySelector<HTMLInputElement>("[name=phone]")?.value ?? "";
       dispatch({ type: "SEND_CODE", countryCode, phone });
     }
@@ -449,7 +452,7 @@ export function createView(dispatch: Dispatch): View {
       return;
     }
 
-    const countryCode = "countryCode" in auth ? auth.countryCode : "+86";
+    const countryCode = "countryCode" in auth ? auth.countryCode : "86";
     const phone = "phone" in auth ? auth.phone : "";
     const busy = auth.status === "sendingCode" || auth.status === "submitting";
     const hasCode = auth.status === "codeSent"

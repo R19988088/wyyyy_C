@@ -10,6 +10,7 @@ import {
   decideVerticalNavigation,
   initialState,
   moveFocus,
+  normalizeCountryCode,
   selectResumeTarget,
   update,
 } from "./state.ts";
@@ -49,6 +50,11 @@ function readyState() {
 test("collection keys include the category", () => {
   assert.equal(collectionKey("album", "42"), "album:42");
   assert.equal(collectionKey("podcast", "42"), "podcast:42");
+});
+
+test("country codes are sent as digits without a display prefix", () => {
+  assert.equal(normalizeCountryCode("+86"), "86");
+  assert.equal(normalizeCountryCode(" 86 "), "86");
 });
 
 test("focus movement is clamped to the collection bounds", () => {

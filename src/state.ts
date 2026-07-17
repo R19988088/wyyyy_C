@@ -167,6 +167,10 @@ export function collectionKey(type: Category, id: string): string {
   return `${type}:${id}`;
 }
 
+export function normalizeCountryCode(value: string): string {
+  return value.trim().replace(/^\+/, "");
+}
+
 export function moveFocus(current: number, delta: -1 | 1, count: number): number {
   if (count <= 0) return 0;
   return Math.min(count - 1, Math.max(0, current + delta));
@@ -741,7 +745,7 @@ export function update(state: AppState, event: Event): Transition {
       };
       }
     case "AUTH_FAILED": {
-      const countryCode = "countryCode" in state.auth ? state.auth.countryCode : "+86";
+      const countryCode = "countryCode" in state.auth ? state.auth.countryCode : "86";
       const phone = "phone" in state.auth ? state.auth.phone : "";
       const phase = state.auth.status === "submitting" ? "login" : "send";
       return {
