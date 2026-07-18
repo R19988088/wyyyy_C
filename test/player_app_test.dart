@@ -253,6 +253,12 @@ void main() {
   testWidgets('holding the scrubber elastically shrinks and rebounds', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     await tester.pumpWidget(
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
@@ -270,12 +276,29 @@ void main() {
     );
     expect(pressedScale.scale, .72);
     expect(pressedScale.curve, Curves.easeOutBack);
+    expect(
+      tester
+          .widget<Opacity>(find.byKey(const Key('cover-visibility-1')))
+          .opacity,
+      1,
+    );
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(
+      tester
+          .widget<Opacity>(find.byKey(const Key('cover-visibility-1')))
+          .opacity,
+      1,
+    );
     await tester.pump(const Duration(milliseconds: 180));
+    final sideCover = tester.getRect(find.byKey(const Key('cover-art-1')));
+    expect(sideCover.width, greaterThan(45));
+    expect(sideCover.overlaps(const Rect.fromLTWH(0, 0, 400, 900)), isTrue);
     final compactSpacing =
         (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
                 tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
             .abs();
-    expect(compactSpacing, closeTo(normalSpacing * .72, 1));
+    expect(compactSpacing, closeTo(normalSpacing * .812, 1));
     await gesture.up();
     await tester.pump();
 

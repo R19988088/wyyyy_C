@@ -443,7 +443,7 @@ class _CoverMode extends StatelessWidget {
                       child: _CoverFlow(
                         controller: controller,
                         pages: pages,
-                        expandedSides: coverSwitching,
+                        expandedSides: coverPressed || coverSwitching,
                         coverKeyFor: coverKeyFor,
                         keepCoverAlive: keepCoverAlive,
                         onPageChanged: onPageChanged,
