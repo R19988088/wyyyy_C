@@ -139,7 +139,7 @@ class _PlayerPageState extends State<PlayerPage>
 
   void _scrubCovers(DragUpdateDetails details) {
     final step = scrubSpeed.update(
-      delta: -(details.primaryDelta ?? 0),
+      delta: details.primaryDelta ?? 0,
       timestamp: WidgetsBinding.instance.currentSystemFrameTimeStamp,
     );
     if (step == null) return;
@@ -523,9 +523,9 @@ class _FullscreenTrackList extends StatelessWidget {
           Container(
             key: const Key('collection-title'),
             constraints: BoxConstraints(
-              minHeight: 103,
+              minHeight: 100,
               maxHeight: math.max(
-                103,
+                100,
                 math.min(220, MediaQuery.sizeOf(context).height * .35),
               ),
             ),
@@ -544,7 +544,10 @@ class _FullscreenTrackList extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       if (collection.subtitle.isNotEmpty) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(
+                          key: Key('collection-subtitle-gap'),
+                          height: 10,
+                        ),
                         Text(
                           collection.subtitle,
                           style: Theme.of(context).textTheme.bodyMedium

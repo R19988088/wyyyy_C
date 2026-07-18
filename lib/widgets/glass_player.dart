@@ -22,7 +22,7 @@ class GlassPlayer extends StatelessWidget {
       key: const Key('player-glass-frame'),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(width: 1, color: Colors.black.withValues(alpha: .5)),
+        border: Border.all(width: 1, color: Colors.black.withValues(alpha: .3)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: .18),

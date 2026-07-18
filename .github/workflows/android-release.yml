@@ -70,6 +70,7 @@ jobs:
           flutter build apk \
             --release \
             --target-platform android-arm64 \
+            --tree-shake-icons \
             --build-number "$((1000 + GITHUB_RUN_NUMBER))"
 
       - name: Align, sign, and verify APK

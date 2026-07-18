@@ -116,7 +116,9 @@ class _PlayerAppState extends State<PlayerApp> {
       brightness: brightness,
       surface: dark ? const Color(0xff141414) : const Color(0xfff6f5f2),
     );
-    final outlineShadows = _outlineShadows(dark ? Colors.black : Colors.white);
+    final outlineShadows = _outlineShadows(
+      (dark ? Colors.black : Colors.white).withValues(alpha: .6),
+    );
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,

@@ -43,21 +43,17 @@ void main() {
     );
     final frameBorder = (playerFrame.decoration as BoxDecoration).border!;
     expect(frameBorder.top.width, 1);
-    expect(frameBorder.top.color, Colors.black.withValues(alpha: .5));
+    expect(frameBorder.top.color, Colors.black.withValues(alpha: .3));
     expect(glass.settings!.blur, 2);
     expect(glass.settings!.thickness, closeTo(44.2, .01));
     expect(glass.settings!.lightIntensity, closeTo(.828, .001));
     expect(glass.settings!.chromaticAberration, closeTo(.44, .001));
+    final theme = Theme.of(tester.element(find.byType(Scaffold)));
     expect(
-      Theme.of(
-        tester.element(find.byType(Scaffold)),
-      ).textTheme.bodyMedium!.shadows,
-      isNotEmpty,
+      theme.textTheme.bodyMedium!.shadows!.first.color.a,
+      closeTo(.6, .001),
     );
-    expect(
-      Theme.of(tester.element(find.byType(Scaffold))).iconTheme.shadows,
-      isNotEmpty,
-    );
+    expect(theme.iconTheme.shadows!.first.color.a, closeTo(.6, .001));
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();
@@ -149,7 +145,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const Key('cover-scrubber')),
-      const Offset(-80, 0),
+      const Offset(80, 0),
     );
     await tester.pumpAndSettle();
 
@@ -181,7 +177,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await gesture.moveBy(const Offset(-30, 0));
+        await gesture.moveBy(const Offset(30, 0));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await gesture.up();
@@ -199,7 +195,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await returnGesture.moveBy(const Offset(30, 0));
+        await returnGesture.moveBy(const Offset(-30, 0));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await returnGesture.up();
@@ -277,7 +273,11 @@ void main() {
     expect(find.text('1 '), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('collection-title'))).height,
-      greaterThanOrEqualTo(103),
+      greaterThanOrEqualTo(100),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('collection-subtitle-gap'))).height,
+      10,
     );
     final row = tester.widget<DecoratedBox>(
       find.byKey(const Key('track-row-0')),
