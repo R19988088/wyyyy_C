@@ -60,9 +60,7 @@ class RustPlayerRepository implements PlaybackRepository {
     try {
       final result = await rust_api.getLibrary(category: kind.name);
       _replaceLibrary(kind, result.items);
-      if (result.fromCache &&
-          kind == LibraryKind.playlist &&
-          cachedPlaylistNeedsCoverRefresh(result.items)) {
+      if (result.fromCache && cachedLibraryNeedsRefresh(kind, result.items)) {
         final fresh = await rust_api.refreshLibraryNow(category: kind.name);
         _replaceLibrary(kind, fresh);
       }
@@ -265,5 +263,9 @@ class RustPlayerRepository implements PlaybackRepository {
   }
 }
 
-bool cachedPlaylistNeedsCoverRefresh(List<rust.CollectionSummary> items) =>
+bool cachedLibraryNeedsRefresh(
+  LibraryKind kind,
+  List<rust.CollectionSummary> items,
+) =>
+    kind == LibraryKind.playlist &&
     items.any((item) => item.coverUrl.trim().isEmpty);

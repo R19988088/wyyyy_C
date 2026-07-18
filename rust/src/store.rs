@@ -15,6 +15,8 @@ struct PersistedState {
     #[serde(default)]
     libraries: BTreeMap<String, BTreeMap<String, Vec<CollectionSummary>>>,
     #[serde(default)]
+    library_versions: BTreeMap<String, BTreeMap<String, u32>>,
+    #[serde(default)]
     tracks: BTreeMap<String, BTreeMap<String, Vec<Track>>>,
 }
 
@@ -104,7 +106,18 @@ impl Store {
                 .entry(account.into())
                 .or_default()
                 .insert(category.into(), value);
+            s.library_versions
+                .entry(account.into())
+                .or_default()
+                .insert(category.into(), 1);
         })
+    }
+    pub(crate) fn library_is_current(&self, account: &str, category: &str) -> bool {
+        self.data
+            .lock()
+            .ok()
+            .and_then(|state| state.library_versions.get(account)?.get(category).copied())
+            == Some(1)
     }
     pub(crate) fn load_library(
         &self,
@@ -145,6 +158,7 @@ impl Store {
     pub(crate) fn clear_metadata_cache(&self, account: &str) -> Result<(), String> {
         self.change(|state| {
             state.libraries.remove(account);
+            state.library_versions.remove(account);
             state.tracks.remove(account);
         })
     }

@@ -95,13 +95,25 @@ fn account_parser_requires_profile() {
 #[test]
 fn playlists_are_split_by_creator() {
     let raw = r#"{"code":200,"playlist":[
-        {"id":1,"name":"Mine","coverImgUrl":"http://mine","trackCount":2,"creator":{"userId":42}},
+        {"id":1,"name":"Mine","coverImgUrl":"http://mine","trackCount":2,"createTime":1704067200000,"creator":{"userId":42,"nickname":"Neri"}},
         {"id":2,"name":"Saved","coverImgUrl":"https://saved","trackCount":3,"creator":{"userId":7}}
     ]}"#;
     let (created, subscribed) = parse_playlists(raw, 42).unwrap();
     assert_eq!(created[0].id, "1");
     assert_eq!(subscribed[0].id, "2");
     assert_eq!(created[0].cover_url, "https://mine");
+    assert_eq!(created[0].subtitle, "Neri · 创建于 2024-01-01");
+}
+
+#[test]
+fn collection_dates_use_china_time_and_ignore_zero() {
+    let raw = r#"{"code":200,"playlist":[
+        {"id":1,"name":"Late","createTime":1704038400000,"creator":{"userId":42,"nickname":"Neri"}},
+        {"id":2,"name":"Unknown","createTime":0,"creator":{"userId":42,"nickname":"Neri"}}
+    ]}"#;
+    let (created, _) = parse_playlists(raw, 42).unwrap();
+    assert_eq!(created[0].subtitle, "Neri · 创建于 2024-01-01");
+    assert_eq!(created[1].subtitle, "Neri");
 }
 
 #[test]
@@ -121,18 +133,19 @@ fn playlists_accept_alternate_cover_fields() {
 
 #[test]
 fn albums_accept_nested_data_shape() {
-    let raw = r#"{"code":200,"data":[{"dataInfo":{"picUrl":"http://cover","data":{"id":8,"name":"Album","size":9}}}]}"#;
+    let raw = r#"{"code":200,"data":[{"dataInfo":{"picUrl":"http://cover","data":{"id":8,"name":"Album","size":9,"publishTime":1704067200000,"artists":[{"name":"Artist"}]}}}]}"#;
     let albums = parse_albums(raw).unwrap();
     assert_eq!(albums[0].id, "8");
     assert_eq!(albums[0].track_count, Some(9));
+    assert_eq!(albums[0].subtitle, "Artist · 2024");
 }
 
 #[test]
 fn podcasts_accept_data_list_shape() {
-    let raw = r#"{"code":200,"data":{"list":[{"radioId":5,"title":"Talk","coverUrl":"http://cover","programCount":4,"dj":{"nickname":"DJ"}}]}}"#;
+    let raw = r#"{"code":200,"data":{"list":[{"radioId":5,"title":"Talk","coverUrl":"http://cover","programCount":4,"createTime":1704067200000,"dj":{"nickname":"DJ"}}]}}"#;
     let podcasts = parse_podcasts(raw).unwrap();
     assert_eq!(podcasts[0].id, "5");
-    assert_eq!(podcasts[0].subtitle, "DJ");
+    assert_eq!(podcasts[0].subtitle, "DJ · 发布于 2024-01-01");
 }
 
 #[test]

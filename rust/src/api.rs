@@ -125,6 +125,18 @@ pub async fn get_library(category: String) -> Result<LibraryResult, String> {
     let account = session.profile.id.clone();
     let kind = parse_collection_type(&category)?;
     if let Some(items) = app.store.load_library(&account, &category) {
+        if !app.store.library_is_current(&account, &category) {
+            return match refresh_library(app, session, revision, category, kind).await {
+                Ok(fresh) => Ok(LibraryResult {
+                    items: fresh,
+                    from_cache: false,
+                }),
+                Err(_) => Ok(LibraryResult {
+                    items,
+                    from_cache: true,
+                }),
+            };
+        }
         let refresh_app = app.clone();
         tokio::spawn(async move {
             let _ = refresh_library(refresh_app, session, revision, category, kind).await;

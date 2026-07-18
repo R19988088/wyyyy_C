@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wyyyy/player.dart';
 import 'package:wyyyy/rust_player_repository.dart';
 import 'package:wyyyy/src/rust/models.dart';
 
@@ -9,12 +10,12 @@ void main() {
         id: '1',
         collectionType: CollectionType.playlist,
         title: 'Playlist',
-        subtitle: 'Owner',
+        subtitle: 'Owner · 创建于 2024-01-01',
         coverUrl: '',
       ),
     ];
 
-    expect(cachedPlaylistNeedsCoverRefresh(items), isTrue);
+    expect(cachedLibraryNeedsRefresh(LibraryKind.playlist, items), isTrue);
   });
 
   test('cached playlists with covers keep the fast cached startup path', () {
@@ -23,11 +24,11 @@ void main() {
         id: '1',
         collectionType: CollectionType.playlist,
         title: 'Playlist',
-        subtitle: 'Owner',
+        subtitle: 'Owner · 创建于 2024-01-01',
         coverUrl: 'https://example.com/cover.jpg',
       ),
     ];
 
-    expect(cachedPlaylistNeedsCoverRefresh(items), isFalse);
+    expect(cachedLibraryNeedsRefresh(LibraryKind.playlist, items), isFalse);
   });
 }

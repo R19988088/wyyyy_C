@@ -33,15 +33,31 @@ void main() {
       find.byKey(const ValueKey('covers')),
     );
     expect(covers.controller!.viewportFraction, closeTo(.7935, .0001));
+    expect(covers.reverse, isTrue);
 
     final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
     final shape = glass.shape as LiquidRoundedSuperellipse;
-    expect(shape.side.width, 1);
-    expect(shape.side.color, Colors.black.withValues(alpha: .5));
+    expect(shape.side, BorderSide.none);
+    final playerFrame = tester.widget<DecoratedBox>(
+      find.byKey(const Key('player-glass-frame')),
+    );
+    final frameBorder = (playerFrame.decoration as BoxDecoration).border!;
+    expect(frameBorder.top.width, 1);
+    expect(frameBorder.top.color, Colors.black.withValues(alpha: .5));
     expect(glass.settings!.blur, 2);
     expect(glass.settings!.thickness, closeTo(44.2, .01));
     expect(glass.settings!.lightIntensity, closeTo(.828, .001));
     expect(glass.settings!.chromaticAberration, closeTo(.44, .001));
+    expect(
+      Theme.of(
+        tester.element(find.byType(Scaffold)),
+      ).textTheme.bodyMedium!.shadows,
+      isNotEmpty,
+    );
+    expect(
+      Theme.of(tester.element(find.byType(Scaffold))).iconTheme.shadows,
+      isNotEmpty,
+    );
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();
@@ -97,7 +113,7 @@ void main() {
     await tester.pumpWidget(PlayerApp(repository: repository));
     await tester.drag(
       find.byKey(const ValueKey('covers')),
-      const Offset(-500, 0),
+      const Offset(500, 0),
     );
     await tester.pumpAndSettle();
 
@@ -133,7 +149,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const Key('cover-scrubber')),
-      const Offset(80, 0),
+      const Offset(-80, 0),
     );
     await tester.pumpAndSettle();
 
@@ -165,7 +181,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await gesture.moveBy(const Offset(30, 0));
+        await gesture.moveBy(const Offset(-30, 0));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await gesture.up();
@@ -183,7 +199,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await returnGesture.moveBy(const Offset(-30, 0));
+        await returnGesture.moveBy(const Offset(30, 0));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await returnGesture.up();
@@ -231,6 +247,46 @@ void main() {
     expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
   });
 
+  testWidgets('track list shows metadata numbers and active progress fill', (
+    tester,
+  ) async {
+    const title =
+        'A complete collection title that must wrap without ellipsis '
+        'even when the collection name contains several descriptive clauses '
+        'and remains fully available in the scrollable metadata header';
+    const collection = MusicCollection(
+      'album',
+      title,
+      'Artist · 2024',
+      LibraryKind.album,
+      [Track('track', 'Track', 'Artist')],
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: _ProgressRepository(collection)),
+    );
+    await tester.pump();
+    await tester.fling(
+      find.byKey(const ValueKey('covers')),
+      const Offset(0, -400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(title), findsOneWidget);
+    expect(find.text('Artist · 2024'), findsOneWidget);
+    expect(find.text('1 '), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('collection-title'))).height,
+      greaterThanOrEqualTo(103),
+    );
+    final row = tester.widget<DecoratedBox>(
+      find.byKey(const Key('track-row-0')),
+    );
+    final gradient = (row.decoration as BoxDecoration).gradient!;
+    expect(gradient.colors.first.a, closeTo(.2, .001));
+    expect(gradient.stops, [0, .5, .5, 1]);
+  });
+
   testWidgets('square cover fits a small screen with large text', (
     tester,
   ) async {
@@ -273,7 +329,7 @@ void main() {
     );
     await tester.drag(
       find.byKey(const ValueKey('covers')),
-      const Offset(-500, 0),
+      const Offset(500, 0),
     );
     await tester.pumpAndSettle();
     final originalCoverRect = tester.getRect(
@@ -362,4 +418,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('covers')), findsOneWidget);
   });
+}
+
+class _ProgressRepository implements PlaybackRepository {
+  _ProgressRepository(this.collection);
+
+  final MusicCollection collection;
+
+  @override
+  Stream<PlaybackSnapshot> get playback => Stream.value(
+    const PlaybackSnapshot(playing: true, trackIndex: 0, progress: .5),
+  );
+
+  @override
+  MusicCollection get restoredCollection => collection;
+
+  @override
+  int get restoredTrackIndex => 0;
+
+  @override
+  List<MusicCollection> collections(LibraryKind kind) =>
+      kind == collection.kind ? [collection] : const [];
+
+  @override
+  Future<int> activate(
+    MusicCollection collection, {
+    int trackIndex = 0,
+    bool autoplay = true,
+  }) async => trackIndex;
+
+  @override
+  Future<void> loadTracks(MusicCollection collection) async {}
+
+  @override
+  Future<int> next() async => 0;
+
+  @override
+  Future<int> previous() async => 0;
+
+  @override
+  Future<void> seek(double progress) async {}
+
+  @override
+  Future<bool> togglePlaying() async => true;
+
+  @override
+  Future<void> clearCache() async {}
+
+  @override
+  Future<void> reload() async {}
 }

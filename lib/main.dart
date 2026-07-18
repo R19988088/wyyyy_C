@@ -116,11 +116,50 @@ class _PlayerAppState extends State<PlayerApp> {
       brightness: brightness,
       surface: dark ? const Color(0xff141414) : const Color(0xfff6f5f2),
     );
-    return ThemeData(
+    final outlineShadows = _outlineShadows(dark ? Colors.black : Colors.white);
+    final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
       dividerColor: scheme.onSurface.withValues(alpha: .1),
     );
+    final outlineStyle = TextStyle(shadows: outlineShadows);
+    return base.copyWith(
+      iconTheme: base.iconTheme.copyWith(shadows: outlineShadows),
+      primaryIconTheme: base.primaryIconTheme.copyWith(shadows: outlineShadows),
+      textTheme: base.textTheme.merge(
+        TextTheme(
+          displayLarge: outlineStyle,
+          displayMedium: outlineStyle,
+          displaySmall: outlineStyle,
+          headlineLarge: outlineStyle,
+          headlineMedium: outlineStyle,
+          headlineSmall: outlineStyle,
+          titleLarge: outlineStyle,
+          titleMedium: outlineStyle,
+          titleSmall: outlineStyle,
+          bodyLarge: outlineStyle,
+          bodyMedium: outlineStyle,
+          bodySmall: outlineStyle,
+          labelLarge: outlineStyle,
+          labelMedium: outlineStyle,
+          labelSmall: outlineStyle,
+        ),
+      ),
+    );
   }
 }
+
+List<Shadow> _outlineShadows(Color color) => [
+  for (final offset in const [
+    Offset(-1, -1),
+    Offset(0, -1),
+    Offset(1, -1),
+    Offset(-1, 0),
+    Offset(1, 0),
+    Offset(-1, 1),
+    Offset(0, 1),
+    Offset(1, 1),
+  ])
+    Shadow(color: color, offset: offset),
+];

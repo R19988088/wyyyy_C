@@ -650,13 +650,20 @@ pub(crate) fn parse_playlists(
         let creator_id = creator
             .and_then(|value| value_u64(value.get("userId")))
             .unwrap_or_default();
+        let creator_name = creator
+            .and_then(|value| clean_string(value.get("nickname")))
+            .unwrap_or_default();
+        let subtitle = dated_subtitle(
+            creator_name,
+            value_u64(item.get("createTime")),
+            "创建于",
+            false,
+        );
         let summary = CollectionSummary {
             id: id.to_string(),
             collection_type: CollectionType::Playlist,
             title,
-            subtitle: creator
-                .and_then(|value| clean_string(value.get("nickname")))
-                .unwrap_or_default(),
+            subtitle,
             cover_url: clean_string(item.get("coverImgUrl"))
                 .or_else(|| clean_string(item.get("coverUrl")))
                 .or_else(|| clean_string(item.get("picUrl")))
@@ -696,11 +703,18 @@ pub(crate) fn parse_albums(raw: &str) -> Result<Vec<CollectionSummary>, String> 
                 .or_else(|| clean_string(data.get("blurPicUrl")))
                 .map(normalize_https)
                 .unwrap_or_default();
-            let subtitle = data
+            let artist = data
                 .get("artists")
                 .and_then(Value::as_array)
                 .map(|items| artist_names(items))
                 .unwrap_or_default();
+            let subtitle = dated_subtitle(
+                artist,
+                value_u64(data.get("publishTime"))
+                    .or_else(|| info.and_then(|value| value_u64(value.get("publishTime")))),
+                "",
+                true,
+            );
             Some(CollectionSummary {
                 id: id.to_string(),
                 collection_type: CollectionType::Album,
@@ -737,7 +751,7 @@ pub(crate) fn parse_podcasts(raw: &str) -> Result<Vec<CollectionSummary>, String
             let id = value_u64(item.get("id")).or_else(|| value_u64(item.get("radioId")))?;
             let title =
                 clean_string(item.get("name")).or_else(|| clean_string(item.get("title")))?;
-            let subtitle = item
+            let publisher = item
                 .get("dj")
                 .and_then(|value| clean_string(value.get("nickname")))
                 .or_else(|| {
@@ -745,6 +759,12 @@ pub(crate) fn parse_podcasts(raw: &str) -> Result<Vec<CollectionSummary>, String
                         .and_then(|value| clean_string(value.get("nickname")))
                 })
                 .unwrap_or_default();
+            let subtitle = dated_subtitle(
+                publisher,
+                value_u64(item.get("createTime")),
+                "发布于",
+                false,
+            );
             Some(CollectionSummary {
                 id: id.to_string(),
                 collection_type: CollectionType::Podcast,
@@ -1014,6 +1034,46 @@ fn normalize_https(url: String) -> String {
     } else {
         url
     }
+}
+
+fn dated_subtitle(name: String, timestamp: Option<u64>, label: &str, year_only: bool) -> String {
+    let Some(timestamp) = timestamp.filter(|timestamp| *timestamp > 0) else {
+        return name;
+    };
+    let date = format_unix_date(timestamp);
+    let date = if year_only { &date[..4] } else { &date };
+    let dated = if label.is_empty() {
+        date.to_string()
+    } else {
+        format!("{label} {date}")
+    };
+    if name.is_empty() {
+        dated
+    } else {
+        format!("{name} · {dated}")
+    }
+}
+
+fn format_unix_date(timestamp: u64) -> String {
+    let seconds = if timestamp > 10_000_000_000 {
+        timestamp / 1000
+    } else {
+        timestamp
+    };
+    let z = ((seconds + 8 * 60 * 60) / 86_400) as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    format!("{year:04}-{month:02}-{day:02}")
 }
 
 fn parse_id(raw: &str, kind: &str) -> Result<u64, String> {

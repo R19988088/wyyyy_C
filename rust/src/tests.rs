@@ -21,7 +21,22 @@ fn metadata_is_partitioned_by_account_and_survives_reopen() {
     drop(store);
     let reopened = Store::open(path).unwrap();
     assert_eq!(reopened.load_library("42", "playlist"), Some(list));
+    assert!(reopened.library_is_current("42", "playlist"));
     assert_eq!(reopened.load_library("43", "playlist"), None);
+}
+
+#[test]
+fn legacy_library_cache_requires_one_schema_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    fs::write(
+        &path,
+        r#"{"session":null,"libraries":{"42":{"album":[]}},"tracks":{}}"#,
+    )
+    .unwrap();
+
+    let store = Store::open(path).unwrap();
+    assert!(!store.library_is_current("42", "album"));
 }
 
 #[test]

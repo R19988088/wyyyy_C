@@ -139,7 +139,7 @@ class _PlayerPageState extends State<PlayerPage>
 
   void _scrubCovers(DragUpdateDetails details) {
     final step = scrubSpeed.update(
-      delta: details.primaryDelta ?? 0,
+      delta: -(details.primaryDelta ?? 0),
       timestamp: WidgetsBinding.instance.currentSystemFrameTimeStamp,
     );
     if (step == null) return;
@@ -522,17 +522,40 @@ class _FullscreenTrackList extends StatelessWidget {
         children: [
           Container(
             key: const Key('collection-title'),
-            constraints: const BoxConstraints(minHeight: 64),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  collection.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+            constraints: BoxConstraints(
+              minHeight: 103,
+              maxHeight: math.max(
+                103,
+                math.min(220, MediaQuery.sizeOf(context).height * .35),
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        collection.title,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      if (collection.subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          collection.subtitle,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -568,6 +591,7 @@ class _CoverFlow extends StatelessWidget {
     }
     return PageView.builder(
       key: const ValueKey('covers'),
+      reverse: true,
       controller: pages,
       itemCount: controller.visible.length,
       onPageChanged: controller.browseTo,
@@ -733,12 +757,39 @@ class _TrackList extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         final track = collection.tracks[index];
-        return ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(track.title),
-          subtitle: Text(track.artist),
-          trailing: const Icon(Icons.more_horiz),
-          onTap: () => controller.activateTrack(collection, index),
+        final active =
+            controller.playingCollection.id == collection.id &&
+            controller.playingCollection.kind == collection.kind &&
+            controller.trackIndex == index;
+        final progress = active ? controller.progress.clamp(0.0, 1.0) : 0.0;
+        return DecoratedBox(
+          key: Key('track-row-$index'),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Theme.of(context).colorScheme.primary.withValues(alpha: .2),
+                Theme.of(context).colorScheme.primary.withValues(alpha: .2),
+                Colors.transparent,
+                Colors.transparent,
+              ],
+              stops: [0, progress, progress, 1],
+            ),
+          ),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: SizedBox(
+              width: 34,
+              child: Text(
+                '${index + 1} ',
+                textAlign: TextAlign.right,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            title: Text(track.title),
+            subtitle: Text(track.artist),
+            trailing: const Icon(Icons.more_horiz),
+            onTap: () => controller.activateTrack(collection, index),
+          ),
         );
       },
     );
