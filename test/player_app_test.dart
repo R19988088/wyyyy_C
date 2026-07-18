@@ -43,7 +43,7 @@ void main() {
     final covers = tester.widget<PageView>(
       find.byKey(const ValueKey('covers')),
     );
-    expect(covers.controller!.viewportFraction, .4);
+    expect(covers.controller!.viewportFraction, .16);
     expect(covers.reverse, isTrue);
     expect(covers.clipBehavior, Clip.none);
     final coverSpacing =
@@ -53,7 +53,7 @@ void main() {
     expect(
       coverSpacing,
       closeTo(
-        tester.getSize(find.byKey(const ValueKey('covers'))).width * .4,
+        tester.getSize(find.byKey(const ValueKey('covers'))).width * .423,
         1,
       ),
     );
@@ -174,10 +174,11 @@ void main() {
     );
 
     final sideCover = tester.getRect(find.byKey(const Key('cover-art-1')));
-    final tapPosition = Offset(sideCover.right - 4, sideCover.center.dy);
+    final tapPosition = sideCover.center;
+    final viewport = tester.getRect(find.byKey(const ValueKey('covers')));
     final pageWidth =
-        tester.getSize(find.byKey(const ValueKey('covers'))).width * .4;
-    expect(tapPosition.dx, greaterThan(sideCover.center.dx + pageWidth / 2));
+        tester.getSize(find.byKey(const ValueKey('covers'))).width * .16;
+    expect(tapPosition.dx, lessThan(viewport.center.dx - pageWidth * 1.5));
     await tester.tapAt(tapPosition);
     await tester.pumpAndSettle();
 
@@ -192,6 +193,75 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('cover flow shows five continuous non-overlapping covers', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      9,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+    final pageView = tester.widget<PageView>(
+      find.byKey(const ValueKey('covers')),
+    );
+    pageView.controller!.jumpToPage(4);
+    await tester.pumpAndSettle();
+
+    final viewport = tester.getRect(find.byKey(const ValueKey('covers')));
+    final covers = [
+      for (var index = 2; index <= 6; index++)
+        tester.getRect(find.byKey(Key('cover-art-$index'))),
+    ]..sort((left, right) => left.left.compareTo(right.left));
+    expect(covers.where((rect) => rect.overlaps(viewport)), hasLength(5));
+    for (var index = 1; index < covers.length; index++) {
+      expect(
+        covers[index].left - covers[index - 1].right,
+        greaterThanOrEqualTo(4),
+      );
+    }
+    expect(
+      tester.getRect(find.byKey(const Key('cover-art-4'))).width,
+      greaterThan(
+        tester.getRect(find.byKey(const Key('cover-art-3'))).width * 3,
+      ),
+    );
+
+    pageView.controller!.jumpTo(
+      pageView.controller!.position.pixels +
+          pageView.controller!.position.viewportDimension * .08,
+    );
+    await tester.pump();
+    final movingCovers = [
+      for (var index = 2; index <= 7; index++)
+        tester.getRect(find.byKey(Key('cover-art-$index'))),
+    ]..sort((left, right) => left.left.compareTo(right.left));
+    expect(
+      movingCovers.where((rect) => rect.overlaps(viewport)).length,
+      greaterThanOrEqualTo(5),
+    );
+    for (var index = 1; index < movingCovers.length; index++) {
+      expect(
+        movingCovers[index].left - movingCovers[index - 1].right,
+        greaterThanOrEqualTo(0),
+      );
+    }
   });
 
   testWidgets('hidden scrubber uses a fast drag to cross multiple covers', (
@@ -213,7 +283,7 @@ void main() {
     );
   });
 
-  testWidgets('cover flow shrinks while scrubbing and restores on release', (
+  testWidgets('holding the scrubber elastically shrinks and rebounds', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -227,59 +297,32 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-scrubber'))),
     );
-    await gesture.moveBy(const Offset(30, 0));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-    expect(
-      tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
-          .scale,
-      .5,
+    final pressedScale = tester.widget<AnimatedScale>(
+      find.byKey(const Key('cover-switch-scale')),
     );
+    expect(pressedScale.scale, .72);
+    expect(pressedScale.curve, Curves.easeOutBack);
+    await tester.pump(const Duration(milliseconds: 180));
     final compactSpacing =
         (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
                 tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
             .abs();
-    expect(compactSpacing, closeTo(normalSpacing * .5, 1));
+    expect(compactSpacing, closeTo(normalSpacing * .72, 1));
     await gesture.up();
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     final restoredScale = tester.widget<AnimatedScale>(
       find.byKey(const Key('cover-switch-scale')),
     );
     expect(restoredScale.scale, 1);
-    expect(restoredScale.curve, Curves.easeOutCubic);
+    expect(restoredScale.curve, Curves.elasticOut);
+    await tester.pumpAndSettle();
     final restoredSpacing =
         (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
                 tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
             .abs();
     expect(restoredSpacing, closeTo(normalSpacing, 1));
-  });
-
-  testWidgets('tapping the blank scrub area toggles 80 percent cover scale', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    await tester.tap(find.byKey(const Key('cover-scrubber')));
-    await tester.pump();
-    expect(
-      tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
-          .scale,
-      .8,
-    );
-
-    await tester.tap(find.byKey(const Key('cover-scrubber')));
-    await tester.pump();
-    expect(
-      tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
-          .scale,
-      1,
-    );
   });
 
   testWidgets('direct cover drag restores scale as soon as the finger lifts', (
@@ -338,7 +381,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(240, 0),
+        const Offset(90, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -350,7 +393,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(-240, 0),
+        const Offset(-90, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -397,7 +440,7 @@ void main() {
     for (var index = 0; index < 8; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(240, 0),
+        const Offset(90, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -605,7 +648,7 @@ void main() {
     );
     await tester.drag(
       find.byKey(const ValueKey('covers')),
-      const Offset(240, 0),
+      const Offset(90, 0),
     );
     await tester.pumpAndSettle();
     final originalCoverRect = tester.getRect(
@@ -670,15 +713,19 @@ void main() {
     );
   });
 
-  testWidgets('compact cover expands from its transformed rectangle', (
+  testWidgets('rebounded cover expands from its transformed rectangle', (
     tester,
   ) async {
     await tester.pumpWidget(
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
-    await tester.tap(find.byKey(const Key('cover-scrubber')));
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+    );
+    await tester.pump(const Duration(milliseconds: 180));
+    await gesture.up();
     await tester.pumpAndSettle();
-    final compactRect = tester.getRect(find.byKey(const Key('cover-art-0')));
+    final coverRect = tester.getRect(find.byKey(const Key('cover-art-0')));
 
     await tester.fling(
       find.byKey(const ValueKey('covers')),
@@ -690,10 +737,10 @@ void main() {
     final expansionRect = tester.getRect(
       find.byKey(const Key('cover-expansion')),
     );
-    expect(expansionRect.left, closeTo(compactRect.left, 1));
-    expect(expansionRect.top, closeTo(compactRect.top, 1));
-    expect(expansionRect.width, closeTo(compactRect.width, 1));
-    expect(expansionRect.height, closeTo(compactRect.height, 1));
+    expect(expansionRect.left, closeTo(coverRect.left, 1));
+    expect(expansionRect.top, closeTo(coverRect.top, 1));
+    expect(expansionRect.width, closeTo(coverRect.width, 1));
+    expect(expansionRect.height, closeTo(coverRect.height, 1));
   });
 
   testWidgets('back during expansion reverses from the current frame', (

@@ -9,8 +9,12 @@ import 'player.dart';
 import 'services/media_cache.dart';
 import 'widgets/glass_player.dart';
 
-const _coverViewportFraction = .4;
+const _coverViewportFraction = .16;
 const _coverWidthFraction = .8;
+const _firstSideCoverOffset = .423;
+const _sideCoverStep = .068;
+const _sideCoverScale = .62;
+const _sideCoverAngle = 1.45;
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
@@ -45,7 +49,6 @@ class _PlayerPageState extends State<PlayerPage>
   bool listMode = false;
   bool scrubberActive = false;
   bool pageDragActive = false;
-  bool coverCompact = false;
 
   GlobalKey _coverKey(MusicCollection collection) =>
       coverKeys.putIfAbsent(_coverId(collection), GlobalKey.new);
@@ -211,8 +214,6 @@ class _PlayerPageState extends State<PlayerPage>
     setState(() => pageDragActive = active);
   }
 
-  void _toggleCoverCompact() => setState(() => coverCompact = !coverCompact);
-
   Future<void> _returnToPlaying() async {
     final targetKind = controller.activeKind;
     if (controller.kind != targetKind) {
@@ -292,9 +293,8 @@ class _PlayerPageState extends State<PlayerPage>
                             coverKeyFor: _coverKey,
                             keepCoverAlive: _keepCoverAlive,
                             onPageChanged: _browseTo,
-                            coverSwitching: scrubberActive || pageDragActive,
-                            coverCompact: coverCompact,
-                            onToggleCompact: _toggleCoverCompact,
+                            coverSwitching: pageDragActive,
+                            coverPressed: scrubberActive,
                             onPageDragStart: () => _setPageDragActive(true),
                             onPageDragEnd: () => _setPageDragActive(false),
                             onScrubStart: () => _setScrubberActive(true),
@@ -367,8 +367,7 @@ class _CoverMode extends StatelessWidget {
     required this.keepCoverAlive,
     required this.onPageChanged,
     required this.coverSwitching,
-    required this.coverCompact,
-    required this.onToggleCompact,
+    required this.coverPressed,
     required this.onPageDragStart,
     required this.onPageDragEnd,
     required this.onScrubStart,
@@ -386,8 +385,7 @@ class _CoverMode extends StatelessWidget {
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
   final bool coverSwitching;
-  final bool coverCompact;
-  final VoidCallback onToggleCompact;
+  final bool coverPressed;
   final VoidCallback onPageDragStart;
   final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
@@ -427,11 +425,17 @@ class _CoverMode extends StatelessWidget {
                     opacity: 1 - progress,
                     child: AnimatedScale(
                       key: const Key('cover-switch-scale'),
-                      scale: coverSwitching ? .5 : (coverCompact ? .8 : 1),
+                      scale: coverPressed ? .72 : (coverSwitching ? .5 : 1),
                       duration: Duration(
-                        milliseconds: coverSwitching ? 110 : 260,
+                        milliseconds: coverPressed
+                            ? 180
+                            : (coverSwitching ? 110 : 520),
                       ),
-                      curve: Curves.easeOutCubic,
+                      curve: coverPressed
+                          ? Curves.easeOutBack
+                          : (coverSwitching
+                                ? Curves.easeOutCubic
+                                : Curves.elasticOut),
                       child: _CoverFlow(
                         controller: controller,
                         pages: pages,
@@ -449,14 +453,24 @@ class _CoverMode extends StatelessWidget {
                   right: 24,
                   bottom: 180,
                   height: 56,
-                  child: GestureDetector(
+                  child: Listener(
                     key: const Key('cover-scrubber'),
-                    behavior: HitTestBehavior.translucent,
-                    onTap: onToggleCompact,
-                    onHorizontalDragStart: (_) => onScrubStart(),
-                    onHorizontalDragUpdate: onScrubUpdate,
-                    onHorizontalDragEnd: (_) => onScrubEnd(),
-                    onHorizontalDragCancel: onScrubEnd,
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (_) => onScrubStart(),
+                    onPointerUp: (_) => onScrubEnd(),
+                    onPointerCancel: (_) => onScrubEnd(),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: onScrubUpdate,
+                      onHorizontalDragEnd: (_) => onScrubEnd(),
+                      onHorizontalDragCancel: onScrubEnd,
+                      onVerticalDragEnd: (details) {
+                        if (details.primaryVelocity != null &&
+                            details.primaryVelocity != 0) {
+                          openList();
+                        }
+                      },
+                    ),
                   ),
                 ),
               ],
@@ -843,17 +857,44 @@ class _CoverFlow extends StatelessWidget {
                   final page = pages.hasClients && pages.position.haveDimensions
                       ? pages.page ?? controller.browsedIndex.toDouble()
                       : controller.browsedIndex.toDouble();
-                  final distance = (index - page).clamp(-1.0, 1.0);
-                  final scale = 1 - distance.abs() * .28;
-                  return Opacity(
-                    opacity: 1 - distance.abs() * .28,
-                    child: Transform(
-                      alignment: Alignment.center,
-                      transform: Matrix4.identity()
-                        ..setEntry(3, 2, .0012)
-                        ..rotateY(-distance * .18)
-                        ..scaleByDouble(scale, scale, 1, 1),
-                      child: child,
+                  final distance = index - page;
+                  final normalizedDistance = math.min(distance.abs(), 1.0);
+                  final positionProgress = math.sin(
+                    normalizedDistance * math.pi / 2,
+                  );
+                  final transformProgress = Curves.easeOutCubic.transform(
+                    normalizedDistance,
+                  );
+                  final scale = 1 - (1 - _sideCoverScale) * transformProgress;
+                  final viewportWidth =
+                      pages.hasClients && pages.position.haveDimensions
+                      ? pages.position.viewportDimension
+                      : MediaQuery.sizeOf(context).width;
+                  final offsetFraction = distance.abs() <= 1
+                      ? _firstSideCoverOffset * positionProgress
+                      : _firstSideCoverOffset +
+                            (distance.abs() - 1) * _sideCoverStep;
+                  final visualOffset =
+                      offsetFraction * viewportWidth * -distance.sign;
+                  final layoutOffset =
+                      -distance * viewportWidth * _coverViewportFraction;
+                  return Transform.translate(
+                    offset: Offset(visualOffset - layoutOffset, 0),
+                    child: Opacity(
+                      opacity: 1 - transformProgress * .12,
+                      child: Transform(
+                        key: Key('cover-transform-$index'),
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()
+                          ..setEntry(3, 2, .0012)
+                          ..rotateY(
+                            -distance.sign *
+                                _sideCoverAngle *
+                                transformProgress,
+                          )
+                          ..scaleByDouble(scale, scale, 1, 1),
+                        child: child,
+                      ),
                     ),
                   );
                 },
