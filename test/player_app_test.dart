@@ -43,9 +43,20 @@ void main() {
     final covers = tester.widget<PageView>(
       find.byKey(const ValueKey('covers')),
     );
-    expect(covers.controller!.viewportFraction, closeTo(.7935, .0001));
+    expect(covers.controller!.viewportFraction, .4);
     expect(covers.reverse, isTrue);
     expect(covers.clipBehavior, Clip.none);
+    final coverSpacing =
+        (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
+                tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
+            .abs();
+    expect(
+      coverSpacing,
+      closeTo(
+        tester.getSize(find.byKey(const ValueKey('covers'))).width * .4,
+        1,
+      ),
+    );
 
     final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
     final shape = glass.shape as LiquidRoundedSuperellipse;
@@ -149,6 +160,40 @@ void main() {
     );
   });
 
+  testWidgets('tapping a visible side cover centers it without playing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final sideCover = tester.getRect(find.byKey(const Key('cover-art-1')));
+    final tapPosition = Offset(sideCover.right - 4, sideCover.center.dy);
+    final pageWidth =
+        tester.getSize(find.byKey(const ValueKey('covers'))).width * .4;
+    expect(tapPosition.dx, greaterThan(sideCover.center.dx + pageWidth / 2));
+    await tester.tapAt(tapPosition);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-metadata')),
+        matching: find.text('晴天'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('hidden scrubber uses a fast drag to cross multiple covers', (
     tester,
   ) async {
@@ -211,6 +256,32 @@ void main() {
     expect(restoredSpacing, closeTo(normalSpacing, 1));
   });
 
+  testWidgets('tapping the blank scrub area toggles 80 percent cover scale', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    await tester.tap(find.byKey(const Key('cover-scrubber')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
+          .scale,
+      .8,
+    );
+
+    await tester.tap(find.byKey(const Key('cover-scrubber')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
+          .scale,
+      1,
+    );
+  });
+
   testWidgets('direct cover drag restores scale as soon as the finger lifts', (
     tester,
   ) async {
@@ -267,7 +338,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(500, 0),
+        const Offset(240, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -279,7 +350,7 @@ void main() {
     for (var index = 0; index < 3; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(-500, 0),
+        const Offset(-240, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -326,7 +397,7 @@ void main() {
     for (var index = 0; index < 8; index++) {
       await tester.drag(
         find.byKey(const ValueKey('covers')),
-        const Offset(500, 0),
+        const Offset(240, 0),
       );
       await tester.pumpAndSettle();
     }
@@ -480,6 +551,10 @@ void main() {
       tester.getSize(find.byKey(const Key('collection-subtitle-gap'))).height,
       10,
     );
+    final titlePadding = tester.widget<Padding>(
+      find.byKey(const Key('collection-title-padding')),
+    );
+    expect(titlePadding.padding, const EdgeInsets.fromLTRB(20, 32, 20, 5));
     final row = tester.widget<DecoratedBox>(
       find.byKey(const Key('track-row-0')),
     );
@@ -530,7 +605,7 @@ void main() {
     );
     await tester.drag(
       find.byKey(const ValueKey('covers')),
-      const Offset(500, 0),
+      const Offset(240, 0),
     );
     await tester.pumpAndSettle();
     final originalCoverRect = tester.getRect(
@@ -593,6 +668,32 @@ void main() {
       tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
+  });
+
+  testWidgets('compact cover expands from its transformed rectangle', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+    await tester.tap(find.byKey(const Key('cover-scrubber')));
+    await tester.pumpAndSettle();
+    final compactRect = tester.getRect(find.byKey(const Key('cover-art-0')));
+
+    await tester.fling(
+      find.byKey(const ValueKey('covers')),
+      const Offset(0, -400),
+      1000,
+    );
+    await tester.pump();
+
+    final expansionRect = tester.getRect(
+      find.byKey(const Key('cover-expansion')),
+    );
+    expect(expansionRect.left, closeTo(compactRect.left, 1));
+    expect(expansionRect.top, closeTo(compactRect.top, 1));
+    expect(expansionRect.width, closeTo(compactRect.width, 1));
+    expect(expansionRect.height, closeTo(compactRect.height, 1));
   });
 
   testWidgets('back during expansion reverses from the current frame', (

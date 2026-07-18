@@ -1,12 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'cover_scrubber.dart';
 import 'player.dart';
 import 'services/media_cache.dart';
 import 'widgets/glass_player.dart';
+
+const _coverViewportFraction = .4;
+const _coverWidthFraction = .8;
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
@@ -41,6 +45,7 @@ class _PlayerPageState extends State<PlayerPage>
   bool listMode = false;
   bool scrubberActive = false;
   bool pageDragActive = false;
+  bool coverCompact = false;
 
   GlobalKey _coverKey(MusicCollection collection) =>
       coverKeys.putIfAbsent(_coverId(collection), GlobalKey.new);
@@ -70,7 +75,7 @@ class _PlayerPageState extends State<PlayerPage>
       duration: const Duration(milliseconds: 420),
     );
     scrubSpeed = CoverScrubSpeedController();
-    pages = PageController(viewportFraction: .7935);
+    pages = PageController(viewportFraction: _coverViewportFraction);
     final repository = widget.repository;
     if (repository is PlaybackRepository &&
         repository.restoredCollection != null) {
@@ -81,7 +86,10 @@ class _PlayerPageState extends State<PlayerPage>
       );
       if (index >= 0) {
         pages.dispose();
-        pages = PageController(viewportFraction: .7935, initialPage: index);
+        pages = PageController(
+          viewportFraction: _coverViewportFraction,
+          initialPage: index,
+        );
         controller.browseTo(index);
       }
     }
@@ -104,7 +112,7 @@ class _PlayerPageState extends State<PlayerPage>
     _retainCover(controller.visible[controller.browsedIndex]);
     pages.dispose();
     pages = PageController(
-      viewportFraction: .7935,
+      viewportFraction: _coverViewportFraction,
       initialPage: controller.browsedIndex,
     );
   }
@@ -117,9 +125,10 @@ class _PlayerPageState extends State<PlayerPage>
     final coverBox =
         _coverKey(collection).currentContext?.findRenderObject() as RenderBox?;
     if (contentBox != null && coverBox != null) {
-      coverStartRect =
-          coverBox.localToGlobal(Offset.zero, ancestor: contentBox) &
-          coverBox.size;
+      coverStartRect = MatrixUtils.transformRect(
+        coverBox.getTransformTo(contentBox),
+        Offset.zero & coverBox.size,
+      );
     }
     transitionCollection = collection;
     listOriginKind = controller.kind;
@@ -158,7 +167,10 @@ class _PlayerPageState extends State<PlayerPage>
       controller.visible.length - 1,
     );
     final oldPages = pages;
-    pages = PageController(viewportFraction: .7935, initialPage: target);
+    pages = PageController(
+      viewportFraction: _coverViewportFraction,
+      initialPage: target,
+    );
     controller.browseTo(target);
     if (mounted) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
@@ -199,6 +211,8 @@ class _PlayerPageState extends State<PlayerPage>
     setState(() => pageDragActive = active);
   }
 
+  void _toggleCoverCompact() => setState(() => coverCompact = !coverCompact);
+
   Future<void> _returnToPlaying() async {
     final targetKind = controller.activeKind;
     if (controller.kind != targetKind) {
@@ -206,7 +220,10 @@ class _PlayerPageState extends State<PlayerPage>
       final target = controller.activeIndexInVisible();
       final start = target > 3 ? target - 3 : 0;
       pages.dispose();
-      pages = PageController(viewportFraction: .7935, initialPage: start);
+      pages = PageController(
+        viewportFraction: _coverViewportFraction,
+        initialPage: start,
+      );
       controller.browseTo(start);
       modeTransition.value = 0;
       setState(() {
@@ -276,6 +293,8 @@ class _PlayerPageState extends State<PlayerPage>
                             keepCoverAlive: _keepCoverAlive,
                             onPageChanged: _browseTo,
                             coverSwitching: scrubberActive || pageDragActive,
+                            coverCompact: coverCompact,
+                            onToggleCompact: _toggleCoverCompact,
                             onPageDragStart: () => _setPageDragActive(true),
                             onPageDragEnd: () => _setPageDragActive(false),
                             onScrubStart: () => _setScrubberActive(true),
@@ -348,6 +367,8 @@ class _CoverMode extends StatelessWidget {
     required this.keepCoverAlive,
     required this.onPageChanged,
     required this.coverSwitching,
+    required this.coverCompact,
+    required this.onToggleCompact,
     required this.onPageDragStart,
     required this.onPageDragEnd,
     required this.onScrubStart,
@@ -365,6 +386,8 @@ class _CoverMode extends StatelessWidget {
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
   final bool coverSwitching;
+  final bool coverCompact;
+  final VoidCallback onToggleCompact;
   final VoidCallback onPageDragStart;
   final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
@@ -404,7 +427,7 @@ class _CoverMode extends StatelessWidget {
                     opacity: 1 - progress,
                     child: AnimatedScale(
                       key: const Key('cover-switch-scale'),
-                      scale: coverSwitching ? .5 : 1,
+                      scale: coverSwitching ? .5 : (coverCompact ? .8 : 1),
                       duration: Duration(
                         milliseconds: coverSwitching ? 110 : 260,
                       ),
@@ -429,6 +452,7 @@ class _CoverMode extends StatelessWidget {
                   child: GestureDetector(
                     key: const Key('cover-scrubber'),
                     behavior: HitTestBehavior.translucent,
+                    onTap: onToggleCompact,
                     onHorizontalDragStart: (_) => onScrubStart(),
                     onHorizontalDragUpdate: onScrubUpdate,
                     onHorizontalDragEnd: (_) => onScrubEnd(),
@@ -604,7 +628,8 @@ class _FullscreenTrackList extends StatelessWidget {
             ),
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                key: const Key('collection-title-padding'),
+                padding: const EdgeInsets.fromLTRB(20, 32, 20, 5),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Column(
@@ -672,6 +697,59 @@ class _RetainedCoverPageState extends State<_RetainedCoverPage>
   }
 }
 
+class _CoverTapRegion extends StatefulWidget {
+  const _CoverTapRegion({required this.onTap, required this.child});
+
+  final void Function(Offset position, bool activate) onTap;
+  final Widget child;
+
+  @override
+  State<_CoverTapRegion> createState() => _CoverTapRegionState();
+}
+
+class _CoverTapRegionState extends State<_CoverTapRegion> {
+  Offset? pointerDownPosition;
+  Offset? lastTapPosition;
+  Duration? lastTapTime;
+  bool pointerMoved = false;
+
+  void _pointerDown(PointerDownEvent event) {
+    pointerDownPosition = event.position;
+    pointerMoved = false;
+  }
+
+  void _pointerMove(PointerMoveEvent event) {
+    final start = pointerDownPosition;
+    if (start != null && (event.position - start).distance > kTouchSlop) {
+      pointerMoved = true;
+    }
+  }
+
+  void _pointerUp(PointerUpEvent event) {
+    if (pointerMoved || pointerDownPosition == null) return;
+    final doubleTap =
+        lastTapTime != null &&
+        event.timeStamp - lastTapTime! <= kDoubleTapTimeout &&
+        lastTapPosition != null &&
+        (event.position - lastTapPosition!).distance <= kDoubleTapSlop;
+    widget.onTap(event.position, doubleTap);
+    lastTapPosition = doubleTap ? null : event.position;
+    lastTapTime = doubleTap ? null : event.timeStamp;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _pointerDown,
+      onPointerMove: _pointerMove,
+      onPointerUp: _pointerUp,
+      onPointerCancel: (_) => pointerMoved = true,
+      child: widget.child,
+    );
+  }
+}
+
 class _CoverFlow extends StatelessWidget {
   const _CoverFlow({
     required this.controller,
@@ -690,6 +768,38 @@ class _CoverFlow extends StatelessWidget {
   final ValueChanged<int> onPageChanged;
   final VoidCallback onDragStart;
   final VoidCallback onDragEnd;
+
+  int? _coverAt(Offset globalPosition) {
+    for (var index = controller.visible.length - 1; index >= 0; index--) {
+      final box =
+          coverKeyFor(
+                controller.visible[index],
+              ).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.attached) continue;
+      if (box.getTransformTo(null).determinant() == 0) continue;
+      if ((Offset.zero & box.size).contains(
+        box.globalToLocal(globalPosition),
+      )) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  void _handleCoverTap(Offset globalPosition, {required bool activate}) {
+    final index = _coverAt(globalPosition);
+    if (index == null) return;
+    if (index == controller.browsedIndex) {
+      if (activate) controller.activateCentered(index);
+      return;
+    }
+    pages.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -715,46 +825,38 @@ class _CoverFlow extends StatelessWidget {
       child: Listener(
         onPointerUp: (_) => onDragEnd(),
         onPointerCancel: (_) => onDragEnd(),
-        child: PageView.builder(
-          key: const ValueKey('covers'),
-          clipBehavior: Clip.none,
-          reverse: true,
-          controller: pages,
-          itemCount: controller.visible.length,
-          onPageChanged: onPageChanged,
-          itemBuilder: (context, index) => _RetainedCoverPage(
-            keepAlive: keepCoverAlive(controller.visible[index]),
-            child: AnimatedBuilder(
-              animation: pages,
-              builder: (context, child) {
-                final page = pages.hasClients && pages.position.haveDimensions
-                    ? pages.page ?? controller.browsedIndex.toDouble()
-                    : controller.browsedIndex.toDouble();
-                final distance = (index - page).clamp(-1.0, 1.0);
-                final scale = 1 - distance.abs() * .28;
-                return Opacity(
-                  opacity: 1 - distance.abs() * .28,
-                  child: Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, .0012)
-                      ..rotateY(-distance * .18)
-                      ..scaleByDouble(scale, scale, 1, 1),
-                    child: child,
-                  ),
-                );
-              },
-              child: GestureDetector(
-                onTap: index == controller.browsedIndex
-                    ? null
-                    : () => pages.animateToPage(
-                        index,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic,
-                      ),
-                onDoubleTap: index == controller.browsedIndex
-                    ? () => controller.activateCentered(index)
-                    : null,
+        child: _CoverTapRegion(
+          onTap: (position, activate) =>
+              _handleCoverTap(position, activate: activate),
+          child: PageView.builder(
+            key: const ValueKey('covers'),
+            clipBehavior: Clip.none,
+            reverse: true,
+            controller: pages,
+            itemCount: controller.visible.length,
+            onPageChanged: onPageChanged,
+            itemBuilder: (context, index) => _RetainedCoverPage(
+              keepAlive: keepCoverAlive(controller.visible[index]),
+              child: AnimatedBuilder(
+                animation: pages,
+                builder: (context, child) {
+                  final page = pages.hasClients && pages.position.haveDimensions
+                      ? pages.page ?? controller.browsedIndex.toDouble()
+                      : controller.browsedIndex.toDouble();
+                  final distance = (index - page).clamp(-1.0, 1.0);
+                  final scale = 1 - distance.abs() * .28;
+                  return Opacity(
+                    opacity: 1 - distance.abs() * .28,
+                    child: Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, .0012)
+                        ..rotateY(-distance * .18)
+                        ..scaleByDouble(scale, scale, 1, 1),
+                      child: child,
+                    ),
+                  );
+                },
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final scaler = MediaQuery.textScalerOf(context);
@@ -763,7 +865,8 @@ class _CoverFlow extends StatelessWidget {
                     final coverSize = math.max(
                       0.0,
                       math.min(
-                        constraints.maxWidth - 16,
+                        MediaQuery.sizeOf(context).width * _coverWidthFraction -
+                            16,
                         constraints.maxHeight - 180 - captionHeight,
                       ),
                     );
@@ -773,75 +876,83 @@ class _CoverFlow extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox.square(
-                              key: Key('cover-art-$index'),
-                              dimension: coverSize,
-                              child: KeyedSubtree(
-                                key: coverKeyFor(controller.visible[index]),
-                                child: DecoratedBox(
-                                  key: Key('cover-surface-$index'),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        _fallbackCoverColor(index),
-                                        _fallbackCoverColor(
-                                          index,
-                                        ).withValues(alpha: .55),
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: .22,
+                            SizedBox(
+                              height: coverSize,
+                              child: OverflowBox(
+                                minWidth: coverSize,
+                                maxWidth: coverSize,
+                                child: SizedBox.square(
+                                  key: Key('cover-art-$index'),
+                                  dimension: coverSize,
+                                  child: KeyedSubtree(
+                                    key: coverKeyFor(controller.visible[index]),
+                                    child: DecoratedBox(
+                                      key: Key('cover-surface-$index'),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            _fallbackCoverColor(index),
+                                            _fallbackCoverColor(
+                                              index,
+                                            ).withValues(alpha: .55),
+                                          ],
                                         ),
-                                        blurRadius: 28,
-                                        offset: const Offset(0, 16),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child:
-                                        controller
-                                            .visible[index]
-                                            .coverUrl
-                                            .isEmpty
-                                        ? Center(
-                                            child: Icon(
-                                              Icons.graphic_eq_rounded,
-                                              size: 72,
-                                              color: Colors.white.withValues(
-                                                alpha: .82,
-                                              ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: .22,
                                             ),
-                                          )
-                                        : CachedNetworkImage(
-                                            imageUrl: controller
-                                                .visible[index]
-                                                .coverUrl,
-                                            httpHeaders: neteaseImageHeaders,
-                                            cacheManager:
-                                                PersistentCoverCache.instance,
-                                            memCacheWidth: math.max(
-                                              1,
-                                              math.min(
-                                                1024,
-                                                (coverSize *
-                                                        MediaQuery.devicePixelRatioOf(
-                                                          context,
-                                                        ))
-                                                    .ceil(),
-                                              ),
-                                            ),
-                                            fadeInDuration: Duration.zero,
-                                            fadeOutDuration: Duration.zero,
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: double.infinity,
+                                            blurRadius: 28,
+                                            offset: const Offset(0, 16),
                                           ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child:
+                                            controller
+                                                .visible[index]
+                                                .coverUrl
+                                                .isEmpty
+                                            ? Center(
+                                                child: Icon(
+                                                  Icons.graphic_eq_rounded,
+                                                  size: 72,
+                                                  color: Colors.white
+                                                      .withValues(alpha: .82),
+                                                ),
+                                              )
+                                            : CachedNetworkImage(
+                                                imageUrl: controller
+                                                    .visible[index]
+                                                    .coverUrl,
+                                                httpHeaders:
+                                                    neteaseImageHeaders,
+                                                cacheManager:
+                                                    PersistentCoverCache
+                                                        .instance,
+                                                memCacheWidth: math.max(
+                                                  1,
+                                                  math.min(
+                                                    1024,
+                                                    (coverSize *
+                                                            MediaQuery.devicePixelRatioOf(
+                                                              context,
+                                                            ))
+                                                        .ceil(),
+                                                  ),
+                                                ),
+                                                fadeInDuration: Duration.zero,
+                                                fadeOutDuration: Duration.zero,
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                height: double.infinity,
+                                              ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
