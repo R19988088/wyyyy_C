@@ -86,11 +86,14 @@ jobs:
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
           keystore="$RUNNER_TEMP/wyyyy-release.jks"
+          arm64_apk="$RUNNER_TEMP/wyyyy-arm64.apk"
           aligned_apk="$RUNNER_TEMP/wyyyy-aligned.apk"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           chmod 600 "$keystore"
 
-          "$build_tools/zipalign" -P 16 -f -v 4 "${apks[0]}" "$aligned_apk"
+          cp "${apks[0]}" "$arm64_apk"
+          zip -d "$arm64_apk" 'lib/armeabi-v7a/*' 'lib/x86/*' 'lib/x86_64/*' || true
+          "$build_tools/zipalign" -P 16 -f -v 4 "$arm64_apk" "$aligned_apk"
           "$build_tools/apksigner" sign \
             --ks "$keystore" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
