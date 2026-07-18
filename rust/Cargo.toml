@@ -1,0 +1,24 @@
+[package]
+name = "wyyyy_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.11.1"
+aes = "0.8"
+base64 = "0.22"
+cbc = "0.1"
+ecb = "0.1"
+hex = "0.4"
+md-5 = "0.10"
+num-bigint = "0.4"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "sync"] }

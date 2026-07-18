@@ -25,14 +25,16 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       EXPECTED_CERT_SHA256: 0AAFC0BA0891648561EFCC32EA2215B84D144594F64F35B2D8E31B7EB803C0B1
       RUST_VERSION: 1.95.0
+      FLUTTER_VERSION: 3.44.5
 
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: subosito/flutter-action@v2
         with:
-          node-version: 24
-          cache: npm
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
       - uses: actions/setup-java@v5
         with:
@@ -48,7 +50,7 @@ jobs:
       - name: Install Linux and Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
             "platforms;android-36" \
@@ -58,28 +60,17 @@ jobs:
 
       - name: Install dependencies and run tests
         run: |
-          npm ci
-          npm test
-          cargo test --locked --manifest-path src-tauri/Cargo.toml
-
-      - name: Set monotonic Android version code
-        run: |
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const path = 'src-tauri/tauri.conf.json';
-          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-          config.bundle.android = {
-            ...(config.bundle.android ?? {}),
-            versionCode: 1000 + Number(process.env.GITHUB_RUN_NUMBER),
-          };
-          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
-
-      - name: Initialize Android project
-        run: npm run tauri -- android init --ci --skip-targets-install
+          flutter pub get
+          flutter analyze
+          flutter test
+          cargo test --locked --manifest-path rust/Cargo.toml
 
       - name: Build unsigned release APK
-        run: npm run tauri -- android build --apk --target aarch64 --ci
+        run: |
+          flutter build apk \
+            --release \
+            --target-platform android-arm64 \
+            --build-number "$((1000 + GITHUB_RUN_NUMBER))"
 
       - name: Align, sign, and verify APK
         shell: bash
@@ -90,7 +81,7 @@ jobs:
           test -n "$ANDROID_KEY_ALIAS"
           test -n "$ANDROID_KEY_PASSWORD"
 
-          mapfile -t apks < <(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk')
+          mapfile -t apks < <(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name 'app-release*.apk')
           test "${#apks[@]}" -eq 1
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"

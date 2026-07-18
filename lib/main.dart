@@ -1,0 +1,126 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'player.dart';
+import 'player_page.dart';
+import 'rust_player_repository.dart';
+import 'services/audio_handler.dart';
+import 'settings_page.dart';
+import 'src/rust/api.dart' as rust_api;
+import 'src/rust/frb_generated.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
+  await LiquidGlassWidgets.initialize();
+  await RustLib.init();
+  final supportDirectory = await getApplicationSupportDirectory();
+  await rust_api.initialize(dataDirectory: supportDirectory.path);
+  await rust_api.restoreSession();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  final handler = await initializeAudioService();
+  final repository = await RustPlayerRepository.create(handler);
+  final preferences = await SharedPreferences.getInstance();
+  runApp(
+    LiquidGlassWidgets.wrap(
+      respectSystemAccessibility: true,
+      theme: GlassThemeData.simple(
+        blur: 18,
+        thickness: 28,
+        quality: GlassQuality.premium,
+      ),
+      child: PlayerApp(
+        repository: repository,
+        initialDark: preferences.getBool('darkMode') ?? false,
+        saveDarkMode: (value) => preferences.setBool('darkMode', value),
+      ),
+    ),
+  );
+}
+
+class PlayerApp extends StatefulWidget {
+  const PlayerApp({
+    super.key,
+    required this.repository,
+    this.initialDark = false,
+    this.saveDarkMode,
+  });
+
+  final PlayerRepository repository;
+  final bool initialDark;
+  final Future<bool> Function(bool value)? saveDarkMode;
+
+  @override
+  State<PlayerApp> createState() => _PlayerAppState();
+}
+
+class _PlayerAppState extends State<PlayerApp> {
+  late ThemeMode _themeMode = widget.initialDark
+      ? ThemeMode.dark
+      : ThemeMode.light;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = _themeMode == ThemeMode.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.black.withValues(alpha: .3),
+        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: dark
+            ? Brightness.light
+            : Brightness.dark,
+      ),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: '网易云音乐',
+        themeMode: _themeMode,
+        theme: _theme(Brightness.light),
+        darkTheme: _theme(Brightness.dark),
+        builder: (context, child) => GlassBackdropScope(child: child!),
+        home: Builder(
+          builder: (context) => PlayerPage(
+            repository: widget.repository,
+            openSettings: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => SettingsPage(
+                    repository: widget.repository,
+                    dark: dark,
+                    onThemeChanged: (value) {
+                      setState(
+                        () => _themeMode = value
+                            ? ThemeMode.dark
+                            : ThemeMode.light,
+                      );
+                      widget.saveDarkMode?.call(value);
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  ThemeData _theme(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xffe5473e),
+      brightness: brightness,
+      surface: dark ? const Color(0xff141414) : const Color(0xfff6f5f2),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: scheme.surface,
+      dividerColor: scheme.onSurface.withValues(alpha: .1),
+    );
+  }
+}
