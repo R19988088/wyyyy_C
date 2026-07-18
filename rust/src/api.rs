@@ -242,7 +242,7 @@ pub async fn cache_audio_track(collection_key: String, track_id: String) -> Resu
     let (session, revision) = session_snapshot(&app)?;
     let account = session.profile.id.clone();
     if let Some(path) = app.audio.lookup(&account, &track_id) {
-        return Ok(path);
+        return Ok(path.to_string_lossy().into_owned());
     }
     let id = track_id
         .parse()
