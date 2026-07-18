@@ -21,15 +21,25 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends State<PlayerPage> {
+class _PlayerPageState extends State<PlayerPage>
+    with SingleTickerProviderStateMixin {
   late final PlayerController controller;
   late PageController pages;
+  late final AnimationController modeTransition;
+  final contentKey = GlobalKey();
+  final currentCoverKey = GlobalKey();
+  Rect? coverStartRect;
+  MusicCollection? transitionCollection;
   bool listMode = false;
 
   @override
   void initState() {
     super.initState();
     controller = PlayerController(widget.repository)..addListener(_refresh);
+    modeTransition = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
     pages = PageController(viewportFraction: .69);
     final repository = widget.repository;
     if (repository is PlaybackRepository &&
@@ -51,6 +61,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    modeTransition.dispose();
     pages.dispose();
     controller.removeListener(_refresh);
     controller.dispose();
@@ -64,6 +75,35 @@ class _PlayerPageState extends State<PlayerPage> {
       viewportFraction: .69,
       initialPage: controller.browsedIndex,
     );
+  }
+
+  Future<void> _openList() async {
+    if (listMode) return;
+    final contentBox =
+        contentKey.currentContext?.findRenderObject() as RenderBox?;
+    final coverBox =
+        currentCoverKey.currentContext?.findRenderObject() as RenderBox?;
+    if (contentBox != null && coverBox != null) {
+      coverStartRect =
+          coverBox.localToGlobal(Offset.zero, ancestor: contentBox) &
+          coverBox.size;
+    }
+    transitionCollection = controller.visible[controller.browsedIndex];
+    setState(() => listMode = true);
+    controller.ensureBrowsedTracks();
+    await modeTransition.forward(from: 0);
+  }
+
+  Future<void> _closeList() async {
+    if (!listMode || modeTransition.status == AnimationStatus.reverse) return;
+    await modeTransition.reverse();
+    if (mounted) {
+      setState(() {
+        listMode = false;
+        coverStartRect = null;
+        transitionCollection = null;
+      });
+    }
   }
 
   Future<void> _returnToPlaying() async {
@@ -86,7 +126,7 @@ class _PlayerPageState extends State<PlayerPage> {
       return;
     }
     if (listMode) {
-      setState(() => listMode = false);
+      await _closeList();
       await WidgetsBinding.instance.endOfFrame;
     }
     final path = PlayerController.returnPath(
@@ -109,42 +149,70 @@ class _PlayerPageState extends State<PlayerPage> {
     return PopScope(
       canPop: !listMode,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && listMode) setState(() => listMode = false);
+        if (!didPop && listMode) _closeList();
       },
       child: Scaffold(
         body: SafeArea(
+          key: const Key('player-content'),
           child: Stack(
+            key: contentKey,
             children: [
-              Column(
-                children: [
-                  _Header(
-                    selected: controller.kind,
-                    onSelected: _selectKind,
-                    openSettings: () async {
-                      await widget.openSettings();
-                      controller.reloadVisible();
-                    },
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onVerticalDragEnd: (details) {
-                        if (listMode ||
-                            details.primaryVelocity == null ||
-                            details.primaryVelocity! >= 0) {
-                          return;
-                        }
-                        setState(() => listMode = true);
-                        controller.ensureBrowsedTracks();
-                      },
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        child: listMode
-                            ? _TrackList(controller: controller)
-                            : _CoverFlow(controller: controller, pages: pages),
-                      ),
-                    ),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) => AnimatedBuilder(
+                  animation: modeTransition,
+                  builder: (context, _) {
+                    final progress = Curves.easeOutCubic.transform(
+                      modeTransition.value,
+                    );
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (modeTransition.value < 1)
+                          _CoverMode(
+                            controller: controller,
+                            pages: pages,
+                            currentCoverKey: currentCoverKey,
+                            progress: progress,
+                            onSelected: _selectKind,
+                            openSettings: () async {
+                              await widget.openSettings();
+                              controller.reloadVisible();
+                            },
+                            openList: _openList,
+                          ),
+                        if (listMode)
+                          IgnorePointer(
+                            key: const Key('transition-list-guard'),
+                            ignoring: modeTransition.value < 1,
+                            child: Opacity(
+                              opacity: Curves.easeIn.transform(
+                                ((modeTransition.value - .35) / .65).clamp(
+                                  0,
+                                  1,
+                                ),
+                              ),
+                              child: _FullscreenTrackList(
+                                controller: controller,
+                              ),
+                            ),
+                          ),
+                        if (listMode &&
+                            coverStartRect != null &&
+                            transitionCollection != null &&
+                            modeTransition.value < 1)
+                          _ExpandingCover(
+                            start: coverStartRect!,
+                            end: Offset.zero & constraints.biggest,
+                            progress: progress,
+                            collection: transitionCollection!,
+                            fallbackColor: _fallbackCoverColor(
+                              controller.browsedIndex,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ),
               Positioned(
                 left: 16,
@@ -156,6 +224,110 @@ class _PlayerPageState extends State<PlayerPage> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoverMode extends StatelessWidget {
+  const _CoverMode({
+    required this.controller,
+    required this.pages,
+    required this.currentCoverKey,
+    required this.progress,
+    required this.onSelected,
+    required this.openSettings,
+    required this.openList,
+  });
+
+  final PlayerController controller;
+  final PageController pages;
+  final GlobalKey currentCoverKey;
+  final double progress;
+  final ValueChanged<LibraryKind> onSelected;
+  final Future<void> Function() openSettings;
+  final Future<void> Function() openList;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: progress > 0,
+      child: Column(
+        children: [
+          Opacity(
+            opacity: 1 - progress,
+            child: _Header(
+              selected: controller.kind,
+              onSelected: onSelected,
+              openSettings: openSettings,
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onVerticalDragEnd: (details) {
+                if (details.primaryVelocity != null &&
+                    details.primaryVelocity! < 0) {
+                  openList();
+                }
+              },
+              child: Opacity(
+                opacity: 1 - progress,
+                child: _CoverFlow(
+                  controller: controller,
+                  pages: pages,
+                  currentCoverKey: currentCoverKey,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpandingCover extends StatelessWidget {
+  const _ExpandingCover({
+    required this.start,
+    required this.end,
+    required this.progress,
+    required this.collection,
+    required this.fallbackColor,
+  });
+
+  final Rect start;
+  final Rect end;
+  final double progress;
+  final MusicCollection collection;
+  final Color fallbackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final rect = Rect.lerp(start, end, progress)!;
+    final fade = ((progress - .72) / .28).clamp(0.0, 1.0);
+    return Positioned.fromRect(
+      key: const Key('cover-expansion'),
+      rect: rect,
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: 1 - fade,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: fallbackColor),
+            child: collection.coverUrl.isEmpty
+                ? Center(
+                    child: Icon(
+                      Icons.graphic_eq_rounded,
+                      size: 72,
+                      color: Colors.white.withValues(alpha: .82),
+                    ),
+                  )
+                : CachedNetworkImage(
+                    imageUrl: collection.coverUrl,
+                    cacheManager: PersistentCoverCache.instance,
+                    fit: BoxFit.cover,
+                  ),
           ),
         ),
       ),
@@ -182,6 +354,7 @@ class _Header extends StatelessWidget {
       LibraryKind.podcast: '播客',
     };
     return Padding(
+      key: const Key('library-header'),
       padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
       child: Row(
         children: [
@@ -209,11 +382,54 @@ class _Header extends StatelessWidget {
   }
 }
 
+class _FullscreenTrackList extends StatelessWidget {
+  const _FullscreenTrackList({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final collection = controller.visible[controller.browsedIndex];
+    return Material(
+      key: const Key('fullscreen-track-list'),
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Column(
+        children: [
+          Container(
+            key: const Key('collection-title'),
+            constraints: const BoxConstraints(minHeight: 64),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  collection.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: _TrackList(controller: controller)),
+        ],
+      ),
+    );
+  }
+}
+
 class _CoverFlow extends StatelessWidget {
-  const _CoverFlow({required this.controller, required this.pages});
+  const _CoverFlow({
+    required this.controller,
+    required this.pages,
+    required this.currentCoverKey,
+  });
 
   final PlayerController controller;
   final PageController pages;
+  final GlobalKey currentCoverKey;
 
   @override
   Widget build(BuildContext context) {
@@ -262,79 +478,110 @@ class _CoverFlow extends StatelessWidget {
               );
             }
           },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 34, 8, 70),
-            child: Column(
-              children: [
-                Expanded(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          _coverColor(index),
-                          _coverColor(index).withValues(alpha: .55),
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: .22),
-                          blurRadius: 28,
-                          offset: const Offset(0, 16),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: controller.visible[index].coverUrl.isEmpty
-                          ? Center(
-                              child: Icon(
-                                Icons.graphic_eq_rounded,
-                                size: 72,
-                                color: Colors.white.withValues(alpha: .82),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scaler = MediaQuery.textScalerOf(context);
+              final captionHeight = 22 + scaler.scale(28) + scaler.scale(18);
+              final coverSize = math.max(
+                0.0,
+                math.min(
+                  constraints.maxWidth - 16,
+                  constraints.maxHeight - 180 - captionHeight,
+                ),
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 180),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox.square(
+                        key: Key('cover-art-$index'),
+                        dimension: coverSize,
+                        child: KeyedSubtree(
+                          key: index == controller.browsedIndex
+                              ? currentCoverKey
+                              : null,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  _fallbackCoverColor(index),
+                                  _fallbackCoverColor(
+                                    index,
+                                  ).withValues(alpha: .55),
+                                ],
                               ),
-                            )
-                          : CachedNetworkImage(
-                              imageUrl: controller.visible[index].coverUrl,
-                              cacheManager: PersistentCoverCache.instance,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: .22),
+                                  blurRadius: 28,
+                                  offset: const Offset(0, 16),
+                                ),
+                              ],
                             ),
-                    ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: controller.visible[index].coverUrl.isEmpty
+                                  ? Center(
+                                      child: Icon(
+                                        Icons.graphic_eq_rounded,
+                                        size: 72,
+                                        color: Colors.white.withValues(
+                                          alpha: .82,
+                                        ),
+                                      ),
+                                    )
+                                  : CachedNetworkImage(
+                                      imageUrl:
+                                          controller.visible[index].coverUrl,
+                                      cacheManager:
+                                          PersistentCoverCache.instance,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        controller.visible[index].title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        controller.visible[index].subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 18),
-                Text(
-                  controller.visible[index].title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  controller.visible[index].subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
     );
   }
-
-  Color _coverColor(int index) => Color.lerp(
-    const Color(0xffe5473e),
-    const Color(0xff377f78),
-    math.min(index / 4, 1),
-  )!;
 }
+
+Color _fallbackCoverColor(int index) => Color.lerp(
+  const Color(0xffe5473e),
+  const Color(0xff377f78),
+  math.min(index / 4, 1),
+)!;
 
 class _TrackList extends StatelessWidget {
   const _TrackList({required this.controller});
