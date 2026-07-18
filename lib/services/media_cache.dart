@@ -6,6 +6,11 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 
 const _coverCacheKey = 'wyyyy-cover-cache';
+const neteaseImageHeaders = {
+  'Referer': 'https://music.163.com/',
+  'User-Agent':
+      'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/138 Mobile Safari/537.36',
+};
 
 class _PersistentFileSystem implements FileSystem {
   _PersistentFileSystem() : _directory = _coverDirectory();

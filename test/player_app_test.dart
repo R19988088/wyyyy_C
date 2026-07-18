@@ -29,13 +29,19 @@ void main() {
     expect(find.byKey(const Key('player-progress')), findsOneWidget);
     final coverSize = tester.getSize(find.byKey(const Key('cover-art-0')));
     expect(coverSize.width, closeTo(coverSize.height, .01));
+    final covers = tester.widget<PageView>(
+      find.byKey(const ValueKey('covers')),
+    );
+    expect(covers.controller!.viewportFraction, closeTo(.7935, .0001));
 
     final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
     final shape = glass.shape as LiquidRoundedSuperellipse;
     expect(shape.side.width, 1);
-    expect(shape.side.color, Colors.black.withValues(alpha: .4));
+    expect(shape.side.color, Colors.black.withValues(alpha: .5));
     expect(glass.settings!.blur, 2);
     expect(glass.settings!.thickness, closeTo(44.2, .01));
+    expect(glass.settings!.lightIntensity, closeTo(.828, .001));
+    expect(glass.settings!.chromaticAberration, closeTo(.44, .001));
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();

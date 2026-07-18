@@ -43,6 +43,29 @@ fn tracks_are_partitioned_by_account_and_collection() {
 }
 
 #[test]
+fn playback_position_survives_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    let store = Store::open(path.clone()).unwrap();
+    let position = crate::models::SavedPosition {
+        track_id: "9".into(),
+        track_index: 2,
+        position: 87.5,
+        updated_at: 123,
+    };
+    store
+        .save_playback("42", "playlist:7".into(), position.clone())
+        .unwrap();
+    drop(store);
+
+    let reopened = Store::open(path).unwrap();
+    assert_eq!(
+        reopened.load_playback("42").get("playlist:7"),
+        Some(&position),
+    );
+}
+
+#[test]
 fn clearing_metadata_cache_keeps_other_accounts() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path().join("state.json")).unwrap();

@@ -108,11 +108,15 @@ fn playlists_are_split_by_creator() {
 fn playlists_accept_alternate_cover_fields() {
     let raw = r#"{"code":200,"playlist":[
         {"id":1,"name":"Cover URL","coverUrl":"http://cover-url","creator":{"userId":42}},
-        {"id":2,"name":"Pic URL","picUrl":"http://pic-url","creator":{"userId":42}}
+        {"id":2,"name":"Pic URL","picUrl":"http://pic-url","creator":{"userId":42}},
+        {"id":3,"name":"Background","backgroundCoverUrl":"http://background","creator":{"userId":42}},
+        {"id":4,"name":"Title","titleImageUrl":"http://title","creator":{"userId":42}}
     ]}"#;
     let (created, _) = parse_playlists(raw, 42).unwrap();
     assert_eq!(created[0].cover_url, "https://cover-url");
     assert_eq!(created[1].cover_url, "https://pic-url");
+    assert_eq!(created[2].cover_url, "https://background");
+    assert_eq!(created[3].cover_url, "https://title");
 }
 
 #[test]

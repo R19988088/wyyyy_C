@@ -32,14 +32,14 @@ class GlassPlayer extends StatelessWidget {
       child: GlassContainer(
         shape: LiquidRoundedSuperellipse(
           borderRadius: 30,
-          side: BorderSide(width: 1, color: Colors.black.withValues(alpha: .4)),
+          side: BorderSide(width: 1, color: Colors.black.withValues(alpha: .5)),
         ),
         settings: LiquidGlassSettings(
           glassColor: scheme.surfaceContainer.withValues(alpha: .12),
           blur: 2,
           thickness: 44.2,
-          chromaticAberration: .4,
-          lightIntensity: .72,
+          chromaticAberration: .44,
+          lightIntensity: .828,
           ambientStrength: .1,
           refractiveIndex: 1.19,
           saturation: 1.35,
@@ -82,6 +82,7 @@ class GlassPlayer extends StatelessWidget {
                                     imageUrl:
                                         controller.track.coverUrl ??
                                         controller.playingCollection.coverUrl,
+                                    httpHeaders: neteaseImageHeaders,
                                     cacheManager: PersistentCoverCache.instance,
                                     fit: BoxFit.cover,
                                   ),

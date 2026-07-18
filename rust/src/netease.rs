@@ -660,6 +660,8 @@ pub(crate) fn parse_playlists(
             cover_url: clean_string(item.get("coverImgUrl"))
                 .or_else(|| clean_string(item.get("coverUrl")))
                 .or_else(|| clean_string(item.get("picUrl")))
+                .or_else(|| clean_string(item.get("backgroundCoverUrl")))
+                .or_else(|| clean_string(item.get("titleImageUrl")))
                 .map(normalize_https)
                 .unwrap_or_default(),
             track_count: value_u64(item.get("trackCount"))

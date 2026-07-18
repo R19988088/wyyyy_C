@@ -46,7 +46,7 @@ class _PlayerPageState extends State<PlayerPage>
       duration: const Duration(milliseconds: 420),
     );
     scrubSpeed = CoverScrubSpeedController();
-    pages = PageController(viewportFraction: .69);
+    pages = PageController(viewportFraction: .7935);
     final repository = widget.repository;
     if (repository is PlaybackRepository &&
         repository.restoredCollection != null) {
@@ -57,7 +57,7 @@ class _PlayerPageState extends State<PlayerPage>
       );
       if (index >= 0) {
         pages.dispose();
-        pages = PageController(viewportFraction: .69, initialPage: index);
+        pages = PageController(viewportFraction: .7935, initialPage: index);
         controller.browseTo(index);
       }
     }
@@ -78,7 +78,7 @@ class _PlayerPageState extends State<PlayerPage>
     controller.selectKind(kind);
     pages.dispose();
     pages = PageController(
-      viewportFraction: .69,
+      viewportFraction: .7935,
       initialPage: controller.browsedIndex,
     );
   }
@@ -131,7 +131,7 @@ class _PlayerPageState extends State<PlayerPage>
       controller.visible.length - 1,
     );
     final oldPages = pages;
-    pages = PageController(viewportFraction: .69, initialPage: target);
+    pages = PageController(viewportFraction: .7935, initialPage: target);
     controller.browseTo(target);
     if (mounted) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
@@ -163,7 +163,7 @@ class _PlayerPageState extends State<PlayerPage>
       final target = controller.activeIndexInVisible();
       final start = target > 3 ? target - 3 : 0;
       pages.dispose();
-      pages = PageController(viewportFraction: .69, initialPage: start);
+      pages = PageController(viewportFraction: .7935, initialPage: start);
       controller.browseTo(start);
       modeTransition.value = 0;
       setState(() {
@@ -411,6 +411,7 @@ class _ExpandingCover extends StatelessWidget {
                   )
                 : CachedNetworkImage(
                     imageUrl: collection.coverUrl,
+                    httpHeaders: neteaseImageHeaders,
                     cacheManager: PersistentCoverCache.instance,
                     fit: BoxFit.cover,
                   ),
@@ -661,6 +662,7 @@ class _CoverFlow extends StatelessWidget {
                                   : CachedNetworkImage(
                                       imageUrl:
                                           controller.visible[index].coverUrl,
+                                      httpHeaders: neteaseImageHeaders,
                                       cacheManager:
                                           PersistentCoverCache.instance,
                                       fit: BoxFit.cover,
