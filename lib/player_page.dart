@@ -13,12 +13,12 @@ const _coverViewportFraction = .16;
 const _coverWidthFraction = .8;
 const _firstSideCoverOffset = .423;
 const _sideCoverStep = .068;
-const _dragFirstSideCoverOffset = .457;
-const _dragSideCoverStep = .165;
+const _dragFirstSideCoverOffset = .477;
+const _dragSideCoverStep = .14;
 const _sideCoverScale = .62;
 const _sideCoverAngle = 1.45;
-const _dragNearSideCoverAngle = 1.25;
-const _dragFarSideCoverAngle = 1.38;
+const _dragNearSideCoverAngle = 1.16;
+const _dragFarSideCoverAngle = 1.46;
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
@@ -791,7 +791,11 @@ class _CoverFlow extends StatelessWidget {
   final VoidCallback onDragEnd;
 
   int? _coverAt(Offset globalPosition) {
-    for (var index = controller.visible.length - 1; index >= 0; index--) {
+    final firstIndex = expandedSides
+        ? controller.visible.length - 1
+        : controller.browsedIndex;
+    final lastIndex = expandedSides ? 0 : controller.browsedIndex;
+    for (var index = firstIndex; index >= lastIndex; index--) {
       final box =
           coverKeyFor(
                 controller.visible[index],
@@ -889,6 +893,7 @@ class _CoverFlow extends StatelessWidget {
                   final sideStep = expandedSides
                       ? _dragSideCoverStep
                       : _sideCoverStep;
+                  final showCover = expandedSides || index == page.round();
                   final offsetFraction = distance.abs() <= 1
                       ? firstSideOffset * positionProgress
                       : firstSideOffset + (distance.abs() - 1) * sideStep;
@@ -899,7 +904,8 @@ class _CoverFlow extends StatelessWidget {
                   return Transform.translate(
                     offset: Offset(visualOffset - layoutOffset, 0),
                     child: Opacity(
-                      opacity: 1 - transformProgress * .12,
+                      key: Key('cover-visibility-$index'),
+                      opacity: showCover ? 1 : 0,
                       child: Transform(
                         key: Key('cover-transform-$index'),
                         alignment: Alignment.center,

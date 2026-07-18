@@ -160,7 +160,7 @@ void main() {
     );
   });
 
-  testWidgets('tapping a visible side cover centers it without playing', (
+  testWidgets('tapping the hidden side area does not change the cover', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -183,21 +183,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('player-metadata')),
-        matching: find.text('晴天'),
-      ),
-      findsOneWidget,
     );
   });
 
-  testWidgets('cover flow shows five continuous non-overlapping covers', (
-    tester,
-  ) async {
+  testWidgets('cover flow hides side covers until drag', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -224,41 +215,18 @@ void main() {
     pageView.controller!.jumpToPage(4);
     await tester.pumpAndSettle();
 
-    final viewport = tester.getRect(find.byKey(const ValueKey('covers')));
-    final covers = [
-      for (var index = 2; index <= 6; index++)
-        tester.getRect(find.byKey(Key('cover-art-$index'))),
-    ]..sort((left, right) => left.left.compareTo(right.left));
-    expect(covers.where((rect) => rect.overlaps(viewport)), hasLength(5));
-    for (var index = 1; index < covers.length; index++) {
-      expect(
-        covers[index].left - covers[index - 1].right,
-        greaterThanOrEqualTo(4),
-      );
-    }
     expect(
-      tester.getRect(find.byKey(const Key('cover-art-4'))).width,
-      greaterThan(
-        tester.getRect(find.byKey(const Key('cover-art-3'))).width * 3,
-      ),
+      tester
+          .widget<Opacity>(find.byKey(const Key('cover-visibility-4')))
+          .opacity,
+      1,
     );
-    pageView.controller!.jumpTo(
-      pageView.controller!.position.pixels +
-          pageView.controller!.position.viewportDimension * .08,
-    );
-    await tester.pump();
-    final movingCovers = [
-      for (var index = 2; index <= 7; index++)
-        tester.getRect(find.byKey(Key('cover-art-$index'))),
-    ]..sort((left, right) => left.left.compareTo(right.left));
-    expect(
-      movingCovers.where((rect) => rect.overlaps(viewport)).length,
-      greaterThanOrEqualTo(5),
-    );
-    for (var index = 1; index < movingCovers.length; index++) {
+    for (final index in [2, 3, 5, 6]) {
       expect(
-        movingCovers[index].left - movingCovers[index - 1].right,
-        greaterThanOrEqualTo(0),
+        tester
+            .widget<Opacity>(find.byKey(Key('cover-visibility-$index')))
+            .opacity,
+        0,
       );
     }
   });
@@ -418,8 +386,14 @@ void main() {
         .getRect(find.byKey(const Key('cover-art-3')))
         .width;
     final farWidth = tester.getRect(find.byKey(const Key('cover-art-2'))).width;
-    expect(nearWidth, greaterThan(40));
-    expect(nearWidth, greaterThan(farWidth * 1.5));
+    expect(
+      tester
+          .widget<Opacity>(find.byKey(const Key('cover-visibility-3')))
+          .opacity,
+      1,
+    );
+    expect(nearWidth, greaterThan(50));
+    expect(nearWidth, greaterThan(farWidth * 3));
 
     await gesture.up();
     await tester.pumpAndSettle();
