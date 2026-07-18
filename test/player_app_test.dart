@@ -45,6 +45,7 @@ void main() {
     );
     expect(covers.controller!.viewportFraction, closeTo(.7935, .0001));
     expect(covers.reverse, isTrue);
+    expect(covers.clipBehavior, Clip.none);
 
     final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
     final shape = glass.shape as LiquidRoundedSuperellipse;
@@ -173,26 +174,41 @@ void main() {
     await tester.pumpWidget(
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
+    final normalSpacing =
+        (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
+                tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
+            .abs();
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-scrubber'))),
     );
     await gesture.moveBy(const Offset(30, 0));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
     expect(
       tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
           .scale,
       .5,
     );
+    final compactSpacing =
+        (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
+                tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
+            .abs();
+    expect(compactSpacing, closeTo(normalSpacing * .5, 1));
     await gesture.up();
     await tester.pumpAndSettle();
 
     final restoredScale = tester.widget<AnimatedScale>(
-      find.byKey(const Key('cover-switch-scale-0')),
+      find.byKey(const Key('cover-switch-scale')),
     );
     expect(restoredScale.scale, 1);
     expect(restoredScale.curve, Curves.easeOutCubic);
+    final restoredSpacing =
+        (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
+                tester.getCenter(find.byKey(const Key('cover-art-0'))).dx)
+            .abs();
+    expect(restoredSpacing, closeTo(normalSpacing, 1));
   });
 
   testWidgets('direct cover drag restores scale as soon as the finger lifts', (
@@ -211,7 +227,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     expect(
       tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
           .scale,
       .5,
     );
@@ -220,7 +236,7 @@ void main() {
 
     expect(
       tester
-          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
           .scale,
       1,
     );

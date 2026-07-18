@@ -402,15 +402,22 @@ class _CoverMode extends StatelessWidget {
                   },
                   child: Opacity(
                     opacity: 1 - progress,
-                    child: _CoverFlow(
-                      controller: controller,
-                      pages: pages,
-                      coverKeyFor: coverKeyFor,
-                      keepCoverAlive: keepCoverAlive,
-                      onPageChanged: onPageChanged,
-                      coverSwitching: coverSwitching,
-                      onDragStart: onPageDragStart,
-                      onDragEnd: onPageDragEnd,
+                    child: AnimatedScale(
+                      key: const Key('cover-switch-scale'),
+                      scale: coverSwitching ? .5 : 1,
+                      duration: Duration(
+                        milliseconds: coverSwitching ? 110 : 260,
+                      ),
+                      curve: Curves.easeOutCubic,
+                      child: _CoverFlow(
+                        controller: controller,
+                        pages: pages,
+                        coverKeyFor: coverKeyFor,
+                        keepCoverAlive: keepCoverAlive,
+                        onPageChanged: onPageChanged,
+                        onDragStart: onPageDragStart,
+                        onDragEnd: onPageDragEnd,
+                      ),
                     ),
                   ),
                 ),
@@ -672,7 +679,6 @@ class _CoverFlow extends StatelessWidget {
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
-    required this.coverSwitching,
     required this.onDragStart,
     required this.onDragEnd,
   });
@@ -682,7 +688,6 @@ class _CoverFlow extends StatelessWidget {
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
-  final bool coverSwitching;
   final VoidCallback onDragStart;
   final VoidCallback onDragEnd;
 
@@ -712,6 +717,7 @@ class _CoverFlow extends StatelessWidget {
         onPointerCancel: (_) => onDragEnd(),
         child: PageView.builder(
           key: const ValueKey('covers'),
+          clipBehavior: Clip.none,
           reverse: true,
           controller: pages,
           itemCount: controller.visible.length,
@@ -767,83 +773,75 @@ class _CoverFlow extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            AnimatedScale(
-                              key: Key('cover-switch-scale-$index'),
-                              scale: coverSwitching ? .5 : 1,
-                              duration: Duration(
-                                milliseconds: coverSwitching ? 110 : 260,
-                              ),
-                              curve: Curves.easeOutCubic,
-                              child: SizedBox.square(
-                                key: Key('cover-art-$index'),
-                                dimension: coverSize,
-                                child: KeyedSubtree(
-                                  key: coverKeyFor(controller.visible[index]),
-                                  child: DecoratedBox(
-                                    key: Key('cover-surface-$index'),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          _fallbackCoverColor(index),
-                                          _fallbackCoverColor(
-                                            index,
-                                          ).withValues(alpha: .55),
-                                        ],
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: .22,
-                                          ),
-                                          blurRadius: 28,
-                                          offset: const Offset(0, 16),
-                                        ),
+                            SizedBox.square(
+                              key: Key('cover-art-$index'),
+                              dimension: coverSize,
+                              child: KeyedSubtree(
+                                key: coverKeyFor(controller.visible[index]),
+                                child: DecoratedBox(
+                                  key: Key('cover-surface-$index'),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        _fallbackCoverColor(index),
+                                        _fallbackCoverColor(
+                                          index,
+                                        ).withValues(alpha: .55),
                                       ],
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child:
-                                          controller
-                                              .visible[index]
-                                              .coverUrl
-                                              .isEmpty
-                                          ? Center(
-                                              child: Icon(
-                                                Icons.graphic_eq_rounded,
-                                                size: 72,
-                                                color: Colors.white.withValues(
-                                                  alpha: .82,
-                                                ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: .22,
+                                        ),
+                                        blurRadius: 28,
+                                        offset: const Offset(0, 16),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child:
+                                        controller
+                                            .visible[index]
+                                            .coverUrl
+                                            .isEmpty
+                                        ? Center(
+                                            child: Icon(
+                                              Icons.graphic_eq_rounded,
+                                              size: 72,
+                                              color: Colors.white.withValues(
+                                                alpha: .82,
                                               ),
-                                            )
-                                          : CachedNetworkImage(
-                                              imageUrl: controller
-                                                  .visible[index]
-                                                  .coverUrl,
-                                              httpHeaders: neteaseImageHeaders,
-                                              cacheManager:
-                                                  PersistentCoverCache.instance,
-                                              memCacheWidth: math.max(
-                                                1,
-                                                math.min(
-                                                  1024,
-                                                  (coverSize *
-                                                          MediaQuery.devicePixelRatioOf(
-                                                            context,
-                                                          ))
-                                                      .ceil(),
-                                                ),
-                                              ),
-                                              fadeInDuration: Duration.zero,
-                                              fadeOutDuration: Duration.zero,
-                                              fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              height: double.infinity,
                                             ),
-                                    ),
+                                          )
+                                        : CachedNetworkImage(
+                                            imageUrl: controller
+                                                .visible[index]
+                                                .coverUrl,
+                                            httpHeaders: neteaseImageHeaders,
+                                            cacheManager:
+                                                PersistentCoverCache.instance,
+                                            memCacheWidth: math.max(
+                                              1,
+                                              math.min(
+                                                1024,
+                                                (coverSize *
+                                                        MediaQuery.devicePixelRatioOf(
+                                                          context,
+                                                        ))
+                                                    .ceil(),
+                                              ),
+                                            ),
+                                            fadeInDuration: Duration.zero,
+                                            fadeOutDuration: Duration.zero,
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: double.infinity,
+                                          ),
                                   ),
                                 ),
                               ),
