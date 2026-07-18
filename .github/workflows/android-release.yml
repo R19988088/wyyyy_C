@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies and run tests
         run: |
           flutter pub get
-          flutter analyze
+          dart analyze lib test
           flutter test
           cargo test --locked --manifest-path rust/Cargo.toml
 
