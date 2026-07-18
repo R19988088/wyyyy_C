@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:wyyyy/main.dart';
 import 'package:wyyyy/player.dart';
 
@@ -28,6 +29,13 @@ void main() {
     expect(find.byKey(const Key('player-progress')), findsOneWidget);
     final coverSize = tester.getSize(find.byKey(const Key('cover-art-0')));
     expect(coverSize.width, closeTo(coverSize.height, .01));
+
+    final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
+    final shape = glass.shape as LiquidRoundedSuperellipse;
+    expect(shape.side.width, 1);
+    expect(shape.side.color, Colors.black.withValues(alpha: .2));
+    expect(glass.settings!.blur, lessThanOrEqualTo(6));
+    expect(glass.settings!.thickness, greaterThanOrEqualTo(30));
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();
@@ -127,6 +135,79 @@ void main() {
       tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
+  });
+
+  testWidgets(
+    'one scrub gesture keeps sampling after the focused page changes',
+    (tester) async {
+      const tracks = [Track('track', 'Track', 'Artist')];
+      final collections = List.generate(
+        8,
+        (index) => MusicCollection(
+          '$index',
+          'Collection $index',
+          'Owner',
+          LibraryKind.album,
+          tracks,
+        ),
+      );
+      await tester.pumpWidget(
+        PlayerApp(repository: InMemoryPlayerRepository(collections)),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+      );
+      for (var index = 0; index < 4; index++) {
+        await gesture.moveBy(const Offset(30, 0));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getCenter(find.byKey(const Key('cover-art-3'))).dx,
+        closeTo(
+          tester.getCenter(find.byKey(const Key('player-content'))).dx,
+          1,
+        ),
+      );
+
+      final returnGesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+      );
+      for (var index = 0; index < 4; index++) {
+        await returnGesture.moveBy(const Offset(-30, 0));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await returnGesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+        closeTo(
+          tester.getCenter(find.byKey(const Key('player-content'))).dx,
+          1,
+        ),
+      );
+    },
+  );
+
+  testWidgets('vertical swipe from the scrubber still opens the track list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    await tester.fling(
+      find.byKey(const Key('cover-scrubber')),
+      const Offset(0, -400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
   });
 
   testWidgets('square cover fits a small screen with large text', (

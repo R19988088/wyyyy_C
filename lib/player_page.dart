@@ -140,9 +140,7 @@ class _PlayerPageState extends State<PlayerPage>
   void _scrubCovers(DragUpdateDetails details) {
     final step = scrubSpeed.update(
       delta: details.primaryDelta ?? 0,
-      timestamp:
-          details.sourceTimeStamp ??
-          Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
+      timestamp: WidgetsBinding.instance.currentSystemFrameTimeStamp,
     );
     if (step == null) return;
     final target = (controller.browsedIndex + step).clamp(
@@ -334,24 +332,40 @@ class _CoverMode extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: GestureDetector(
-              onVerticalDragEnd: (details) {
-                if (details.primaryVelocity != null &&
-                    details.primaryVelocity! < 0) {
-                  openList();
-                }
-              },
-              child: Opacity(
-                opacity: 1 - progress,
-                child: _CoverFlow(
-                  controller: controller,
-                  pages: pages,
-                  currentCoverKey: currentCoverKey,
-                  onScrubStart: onScrubStart,
-                  onScrubUpdate: onScrubUpdate,
-                  onScrubEnd: onScrubEnd,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                GestureDetector(
+                  onVerticalDragEnd: (details) {
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity! < 0) {
+                      openList();
+                    }
+                  },
+                  child: Opacity(
+                    opacity: 1 - progress,
+                    child: _CoverFlow(
+                      controller: controller,
+                      pages: pages,
+                      currentCoverKey: currentCoverKey,
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: 180,
+                  height: 56,
+                  child: GestureDetector(
+                    key: const Key('cover-scrubber'),
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragStart: (_) => onScrubStart(),
+                    onHorizontalDragUpdate: onScrubUpdate,
+                    onHorizontalDragEnd: (_) => onScrubEnd(),
+                    onHorizontalDragCancel: onScrubEnd,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -535,17 +549,11 @@ class _CoverFlow extends StatelessWidget {
     required this.controller,
     required this.pages,
     required this.currentCoverKey,
-    required this.onScrubStart,
-    required this.onScrubUpdate,
-    required this.onScrubEnd,
   });
 
   final PlayerController controller;
   final PageController pages;
   final GlobalKey currentCoverKey;
-  final VoidCallback onScrubStart;
-  final ValueChanged<DragUpdateDetails> onScrubUpdate;
-  final VoidCallback onScrubEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -680,20 +688,7 @@ class _CoverFlow extends StatelessWidget {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      SizedBox(
-                        key: index == controller.browsedIndex
-                            ? const Key('cover-scrubber')
-                            : null,
-                        height: 56,
-                        width: coverSize,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.translucent,
-                          onHorizontalDragStart: (_) => onScrubStart(),
-                          onHorizontalDragUpdate: onScrubUpdate,
-                          onHorizontalDragEnd: (_) => onScrubEnd(),
-                          onHorizontalDragCancel: onScrubEnd,
-                        ),
-                      ),
+                      const SizedBox(height: 56),
                     ],
                   ),
                 ),
