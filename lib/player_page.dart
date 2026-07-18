@@ -338,7 +338,7 @@ class _CoverMode extends StatelessWidget {
                 GestureDetector(
                   onVerticalDragEnd: (details) {
                     if (details.primaryVelocity != null &&
-                        details.primaryVelocity! < 0) {
+                        details.primaryVelocity != 0) {
                       openList();
                     }
                   },

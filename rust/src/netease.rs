@@ -177,6 +177,37 @@ impl NeteaseClient {
                     .await?;
                 let (mut created, subscribed) = parse_playlists(&raw, profile_id)?;
                 created.extend(subscribed);
+                if created.iter().any(|summary| summary.cover_url.is_empty()) {
+                    let fallback = self
+                        .post_plain(
+                            "https://music.163.com/api/user/playlist",
+                            BTreeMap::from([
+                                ("uid".into(), profile_id.to_string()),
+                                ("offset".into(), "0".into()),
+                                ("limit".into(), "1000".into()),
+                            ]),
+                            true,
+                        )
+                        .await;
+                    if let Ok((mut fallback_items, subscribed)) =
+                        fallback.and_then(|raw| parse_playlists(&raw, profile_id))
+                    {
+                        fallback_items.extend(subscribed);
+                        let covers: BTreeMap<_, _> = fallback_items
+                            .into_iter()
+                            .filter(|summary| !summary.cover_url.is_empty())
+                            .map(|summary| (summary.id, summary.cover_url))
+                            .collect();
+                        for summary in created
+                            .iter_mut()
+                            .filter(|summary| summary.cover_url.is_empty())
+                        {
+                            if let Some(cover) = covers.get(&summary.id) {
+                                summary.cover_url.clone_from(cover);
+                            }
+                        }
+                    }
+                }
                 Ok(created)
             }
             CollectionType::Album => {

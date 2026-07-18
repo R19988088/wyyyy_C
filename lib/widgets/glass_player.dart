@@ -32,12 +32,12 @@ class GlassPlayer extends StatelessWidget {
       child: GlassContainer(
         shape: LiquidRoundedSuperellipse(
           borderRadius: 30,
-          side: BorderSide(width: 1, color: Colors.black.withValues(alpha: .2)),
+          side: BorderSide(width: 1, color: Colors.black.withValues(alpha: .4)),
         ),
         settings: LiquidGlassSettings(
           glassColor: scheme.surfaceContainer.withValues(alpha: .12),
-          blur: 4,
-          thickness: 34,
+          blur: 2,
+          thickness: 44.2,
           chromaticAberration: .4,
           lightIntensity: .72,
           ambientStrength: .1,

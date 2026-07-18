@@ -33,9 +33,9 @@ void main() {
     final glass = tester.widget<GlassContainer>(find.byType(GlassContainer));
     final shape = glass.shape as LiquidRoundedSuperellipse;
     expect(shape.side.width, 1);
-    expect(shape.side.color, Colors.black.withValues(alpha: .2));
-    expect(glass.settings!.blur, lessThanOrEqualTo(6));
-    expect(glass.settings!.thickness, greaterThanOrEqualTo(30));
+    expect(shape.side.color, Colors.black.withValues(alpha: .4));
+    expect(glass.settings!.blur, 2);
+    expect(glass.settings!.thickness, closeTo(44.2, .01));
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();
@@ -203,6 +203,21 @@ void main() {
     await tester.fling(
       find.byKey(const Key('cover-scrubber')),
       const Offset(0, -400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
+  });
+
+  testWidgets('downward swipe also opens the track list', (tester) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    await tester.fling(
+      find.byKey(const ValueKey('covers')),
+      const Offset(0, 400),
       1000,
     );
     await tester.pumpAndSettle();
