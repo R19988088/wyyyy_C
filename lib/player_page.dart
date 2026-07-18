@@ -13,8 +13,12 @@ const _coverViewportFraction = .16;
 const _coverWidthFraction = .8;
 const _firstSideCoverOffset = .423;
 const _sideCoverStep = .068;
+const _dragFirstSideCoverOffset = .457;
+const _dragSideCoverStep = .165;
 const _sideCoverScale = .62;
 const _sideCoverAngle = 1.45;
+const _dragNearSideCoverAngle = 1.25;
+const _dragFarSideCoverAngle = 1.38;
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
@@ -425,7 +429,7 @@ class _CoverMode extends StatelessWidget {
                     opacity: 1 - progress,
                     child: AnimatedScale(
                       key: const Key('cover-switch-scale'),
-                      scale: coverPressed ? .72 : (coverSwitching ? .5 : 1),
+                      scale: coverPressed ? .72 : (coverSwitching ? .8 : 1),
                       duration: Duration(
                         milliseconds: coverPressed
                             ? 180
@@ -439,6 +443,7 @@ class _CoverMode extends StatelessWidget {
                       child: _CoverFlow(
                         controller: controller,
                         pages: pages,
+                        expandedSides: coverSwitching,
                         coverKeyFor: coverKeyFor,
                         keepCoverAlive: keepCoverAlive,
                         onPageChanged: onPageChanged,
@@ -768,6 +773,7 @@ class _CoverFlow extends StatelessWidget {
   const _CoverFlow({
     required this.controller,
     required this.pages,
+    required this.expandedSides,
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
@@ -777,6 +783,7 @@ class _CoverFlow extends StatelessWidget {
 
   final PlayerController controller;
   final PageController pages;
+  final bool expandedSides;
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
@@ -865,15 +872,26 @@ class _CoverFlow extends StatelessWidget {
                   final transformProgress = Curves.easeOutCubic.transform(
                     normalizedDistance,
                   );
+                  final depthProgress = (distance.abs() - 1).clamp(0.0, 1.0);
+                  final sideAngle = expandedSides
+                      ? _dragNearSideCoverAngle +
+                            (_dragFarSideCoverAngle - _dragNearSideCoverAngle) *
+                                depthProgress
+                      : _sideCoverAngle;
                   final scale = 1 - (1 - _sideCoverScale) * transformProgress;
                   final viewportWidth =
                       pages.hasClients && pages.position.haveDimensions
                       ? pages.position.viewportDimension
                       : MediaQuery.sizeOf(context).width;
+                  final firstSideOffset = expandedSides
+                      ? _dragFirstSideCoverOffset
+                      : _firstSideCoverOffset;
+                  final sideStep = expandedSides
+                      ? _dragSideCoverStep
+                      : _sideCoverStep;
                   final offsetFraction = distance.abs() <= 1
-                      ? _firstSideCoverOffset * positionProgress
-                      : _firstSideCoverOffset +
-                            (distance.abs() - 1) * _sideCoverStep;
+                      ? firstSideOffset * positionProgress
+                      : firstSideOffset + (distance.abs() - 1) * sideStep;
                   final visualOffset =
                       offsetFraction * viewportWidth * -distance.sign;
                   final layoutOffset =
@@ -888,9 +906,7 @@ class _CoverFlow extends StatelessWidget {
                         transform: Matrix4.identity()
                           ..setEntry(3, 2, .0012)
                           ..rotateY(
-                            -distance.sign *
-                                _sideCoverAngle *
-                                transformProgress,
+                            -distance.sign * sideAngle * transformProgress,
                           )
                           ..scaleByDouble(scale, scale, 1, 1),
                         child: child,

@@ -242,7 +242,6 @@ void main() {
         tester.getRect(find.byKey(const Key('cover-art-3'))).width * 3,
       ),
     );
-
     pageView.controller!.jumpTo(
       pageView.controller!.position.pixels +
           pageView.controller!.position.viewportDimension * .08,
@@ -335,15 +334,15 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-art-0'))),
     );
-    await gesture.moveBy(const Offset(80, 0));
+    await gesture.moveBy(const Offset(12, 0));
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(const Offset(80, 0));
+    await gesture.moveBy(const Offset(12, 0));
     await tester.pump(const Duration(milliseconds: 16));
     expect(
       tester
           .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
           .scale,
-      .5,
+      .8,
     );
     await gesture.up();
     await tester.pump();
@@ -355,6 +354,75 @@ void main() {
       1,
     );
     await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('cover drag shows five wider layered side covers', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      9,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+    final pageView = tester.widget<PageView>(
+      find.byKey(const ValueKey('covers')),
+    );
+    pageView.controller!.jumpToPage(4);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-4'))),
+    );
+    await gesture.moveBy(const Offset(12, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(12, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
+          .scale,
+      .8,
+    );
+    await tester.pump(const Duration(milliseconds: 110));
+    final viewport =
+        Offset.zero & (tester.view.physicalSize / tester.view.devicePixelRatio);
+    final visibleCovers =
+        [
+            for (var index = 1; index < 8; index++)
+              tester.getRect(find.byKey(Key('cover-art-$index'))),
+          ].where((rect) => rect.overlaps(viewport)).toList()
+          ..sort((left, right) => left.left.compareTo(right.left));
+    expect(visibleCovers, hasLength(5));
+    for (var index = 1; index < visibleCovers.length; index++) {
+      expect(
+        visibleCovers[index].left - visibleCovers[index - 1].right,
+        greaterThanOrEqualTo(0),
+      );
+    }
+    final nearWidth = tester
+        .getRect(find.byKey(const Key('cover-art-3')))
+        .width;
+    final farWidth = tester.getRect(find.byKey(const Key('cover-art-2'))).width;
+    expect(nearWidth, greaterThan(40));
+    expect(nearWidth, greaterThan(farWidth * 1.5));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('returning to a cover preserves its image subtree', (
