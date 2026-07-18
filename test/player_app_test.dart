@@ -24,6 +24,17 @@ void main() {
       find.byKey(const Key('category-album')),
     );
     expect((activeCategory.decoration as BoxDecoration).color, isNotNull);
+    final activeCategoryText = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('category-album')),
+        matching: find.text('专辑'),
+      ),
+    );
+    expect(activeCategoryText.style!.shadows, isNotEmpty);
+    expect(
+      activeCategoryText.style!.shadows!.first.color,
+      Colors.black.withValues(alpha: .6),
+    );
     expect(find.byKey(const Key('player-metadata')), findsOneWidget);
     expect(find.byKey(const Key('player-controls')), findsOneWidget);
     expect(find.byKey(const Key('player-progress')), findsOneWidget);
@@ -54,6 +65,7 @@ void main() {
       closeTo(.6, .001),
     );
     expect(theme.iconTheme.shadows!.first.color.a, closeTo(.6, .001));
+    expect(theme.iconTheme.shadows!.first.offset, const Offset(-.5, -.5));
 
     await tester.tap(find.byKey(const Key('sleep-timer')));
     await tester.pump();
@@ -153,6 +165,179 @@ void main() {
       tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
+  });
+
+  testWidgets('cover flow shrinks while scrubbing and restores on release', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+    );
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .scale,
+      .5,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final restoredScale = tester.widget<AnimatedScale>(
+      find.byKey(const Key('cover-switch-scale-0')),
+    );
+    expect(restoredScale.scale, 1);
+    expect(restoredScale.curve, Curves.easeOutCubic);
+  });
+
+  testWidgets('direct cover drag restores scale as soon as the finger lifts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await gesture.moveBy(const Offset(80, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(80, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .scale,
+      .5,
+    );
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale-0')))
+          .scale,
+      1,
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('returning to a cover preserves its image subtree', (
+    tester,
+  ) async {
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      5,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+    final originalSurface = tester.element(
+      find.byKey(const Key('cover-surface-0')),
+    );
+
+    for (var index = 0; index < 3; index++) {
+      await tester.drag(
+        find.byKey(const ValueKey('covers')),
+        const Offset(500, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(
+      find.byKey(const Key('cover-surface-0'), skipOffstage: false),
+      findsOneWidget,
+    );
+
+    for (var index = 0; index < 3; index++) {
+      await tester.drag(
+        find.byKey(const ValueKey('covers')),
+        const Offset(-500, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      tester.element(find.byKey(const Key('cover-surface-0'))),
+      same(originalSurface),
+    );
+  });
+
+  testWidgets('production glass wrapper avoids obsolete backdrop scopes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      LiquidGlassWidgets.wrap(
+        child: PlayerApp(repository: InMemoryPlayerRepository.demo()),
+      ),
+    );
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == 'GlassBackdropScope',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('cover subtree retention stays bounded', (tester) async {
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      9,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+
+    for (var index = 0; index < 8; index++) {
+      await tester.drag(
+        find.byKey(const ValueKey('covers')),
+        const Offset(500, 0),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      find.byKey(const Key('cover-surface-0'), skipOffstage: false),
+      findsNothing,
+    );
+  });
+
+  testWidgets('glass player survives app background and resume', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      LiquidGlassWidgets.wrap(
+        child: PlayerApp(repository: InMemoryPlayerRepository.demo()),
+      ),
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('player-glass-frame')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

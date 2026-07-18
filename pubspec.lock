@@ -324,10 +324,10 @@ packages:
     dependency: "direct main"
     description:
       name: liquid_glass_widgets
-      sha256: "017562b30f5e5458ff93404fd5612688371fbf86ef00b3f185c19cd07a77277f"
+      sha256: "62f498b0a4a5c4c09b6798f4c12267baadfc81eb71933158e27dfde5e94c355a"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "0.12.8"
+    version: "0.22.1"
   logging:
     dependency: transitive
     description:

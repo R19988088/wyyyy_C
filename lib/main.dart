@@ -81,7 +81,6 @@ class _PlayerAppState extends State<PlayerApp> {
         themeMode: _themeMode,
         theme: _theme(Brightness.light),
         darkTheme: _theme(Brightness.dark),
-        builder: (context, child) => GlassBackdropScope(child: child!),
         home: Builder(
           builder: (context) => PlayerPage(
             repository: widget.repository,
@@ -154,14 +153,14 @@ class _PlayerAppState extends State<PlayerApp> {
 
 List<Shadow> _outlineShadows(Color color) => [
   for (final offset in const [
-    Offset(-1, -1),
-    Offset(0, -1),
-    Offset(1, -1),
-    Offset(-1, 0),
-    Offset(1, 0),
-    Offset(-1, 1),
-    Offset(0, 1),
-    Offset(1, 1),
+    Offset(-.5, -.5),
+    Offset(0, -.5),
+    Offset(.5, -.5),
+    Offset(-.5, 0),
+    Offset(.5, 0),
+    Offset(-.5, .5),
+    Offset(0, .5),
+    Offset(.5, .5),
   ])
     Shadow(color: color, offset: offset),
 ];

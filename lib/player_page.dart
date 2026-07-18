@@ -24,18 +24,42 @@ class PlayerPage extends StatefulWidget {
 
 class _PlayerPageState extends State<PlayerPage>
     with SingleTickerProviderStateMixin {
+  static const maxRetainedCovers = 7;
+
   late final PlayerController controller;
   late PageController pages;
   late final AnimationController modeTransition;
   late final CoverScrubSpeedController scrubSpeed;
   final contentKey = GlobalKey();
-  final currentCoverKey = GlobalKey();
+  final coverKeys = <String, GlobalKey>{};
+  final retainedCoverIds = <String>{};
   Rect? coverStartRect;
   MusicCollection? transitionCollection;
   LibraryKind? listOriginKind;
   String? listOriginId;
   int? listOriginIndex;
   bool listMode = false;
+  bool scrubberActive = false;
+  bool pageDragActive = false;
+
+  GlobalKey _coverKey(MusicCollection collection) =>
+      coverKeys.putIfAbsent(_coverId(collection), GlobalKey.new);
+
+  String _coverId(MusicCollection collection) =>
+      '${collection.kind.name}:${collection.id}';
+
+  void _retainCover(MusicCollection collection) {
+    final id = _coverId(collection);
+    retainedCoverIds
+      ..remove(id)
+      ..add(id);
+    if (retainedCoverIds.length > maxRetainedCovers) {
+      retainedCoverIds.remove(retainedCoverIds.first);
+    }
+  }
+
+  bool _keepCoverAlive(MusicCollection collection) =>
+      retainedCoverIds.contains(_coverId(collection));
 
   @override
   void initState() {
@@ -61,6 +85,7 @@ class _PlayerPageState extends State<PlayerPage>
         controller.browseTo(index);
       }
     }
+    _retainCover(controller.visible[controller.browsedIndex]);
   }
 
   void _refresh() => setState(() {});
@@ -76,6 +101,7 @@ class _PlayerPageState extends State<PlayerPage>
 
   void _selectKind(LibraryKind kind) {
     controller.selectKind(kind);
+    _retainCover(controller.visible[controller.browsedIndex]);
     pages.dispose();
     pages = PageController(
       viewportFraction: .7935,
@@ -87,14 +113,15 @@ class _PlayerPageState extends State<PlayerPage>
     if (listMode) return;
     final contentBox =
         contentKey.currentContext?.findRenderObject() as RenderBox?;
+    final collection = controller.visible[controller.browsedIndex];
     final coverBox =
-        currentCoverKey.currentContext?.findRenderObject() as RenderBox?;
+        _coverKey(collection).currentContext?.findRenderObject() as RenderBox?;
     if (contentBox != null && coverBox != null) {
       coverStartRect =
           coverBox.localToGlobal(Offset.zero, ancestor: contentBox) &
           coverBox.size;
     }
-    transitionCollection = controller.visible[controller.browsedIndex];
+    transitionCollection = collection;
     listOriginKind = controller.kind;
     listOriginId = transitionCollection!.id;
     listOriginIndex = controller.browsedIndex;
@@ -154,6 +181,22 @@ class _PlayerPageState extends State<PlayerPage>
       duration: const Duration(milliseconds: 90),
       curve: Curves.easeOut,
     );
+  }
+
+  void _browseTo(int index) {
+    controller.browseTo(index);
+    _retainCover(controller.visible[controller.browsedIndex]);
+  }
+
+  void _setScrubberActive(bool active) {
+    scrubSpeed.reset();
+    if (scrubberActive == active) return;
+    setState(() => scrubberActive = active);
+  }
+
+  void _setPageDragActive(bool active) {
+    if (pageDragActive == active) return;
+    setState(() => pageDragActive = active);
   }
 
   Future<void> _returnToPlaying() async {
@@ -229,10 +272,15 @@ class _PlayerPageState extends State<PlayerPage>
                           _CoverMode(
                             controller: controller,
                             pages: pages,
-                            currentCoverKey: currentCoverKey,
-                            onScrubStart: scrubSpeed.reset,
+                            coverKeyFor: _coverKey,
+                            keepCoverAlive: _keepCoverAlive,
+                            onPageChanged: _browseTo,
+                            coverSwitching: scrubberActive || pageDragActive,
+                            onPageDragStart: () => _setPageDragActive(true),
+                            onPageDragEnd: () => _setPageDragActive(false),
+                            onScrubStart: () => _setScrubberActive(true),
                             onScrubUpdate: _scrubCovers,
-                            onScrubEnd: scrubSpeed.reset,
+                            onScrubEnd: () => _setScrubberActive(false),
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -296,7 +344,12 @@ class _CoverMode extends StatelessWidget {
   const _CoverMode({
     required this.controller,
     required this.pages,
-    required this.currentCoverKey,
+    required this.coverKeyFor,
+    required this.keepCoverAlive,
+    required this.onPageChanged,
+    required this.coverSwitching,
+    required this.onPageDragStart,
+    required this.onPageDragEnd,
     required this.onScrubStart,
     required this.onScrubUpdate,
     required this.onScrubEnd,
@@ -308,7 +361,12 @@ class _CoverMode extends StatelessWidget {
 
   final PlayerController controller;
   final PageController pages;
-  final GlobalKey currentCoverKey;
+  final GlobalKey Function(MusicCollection collection) coverKeyFor;
+  final bool Function(MusicCollection collection) keepCoverAlive;
+  final ValueChanged<int> onPageChanged;
+  final bool coverSwitching;
+  final VoidCallback onPageDragStart;
+  final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
   final ValueChanged<DragUpdateDetails> onScrubUpdate;
   final VoidCallback onScrubEnd;
@@ -347,7 +405,12 @@ class _CoverMode extends StatelessWidget {
                     child: _CoverFlow(
                       controller: controller,
                       pages: pages,
-                      currentCoverKey: currentCoverKey,
+                      coverKeyFor: coverKeyFor,
+                      keepCoverAlive: keepCoverAlive,
+                      onPageChanged: onPageChanged,
+                      coverSwitching: coverSwitching,
+                      onDragStart: onPageDragStart,
+                      onDragEnd: onPageDragEnd,
                     ),
                   ),
                 ),
@@ -480,6 +543,9 @@ class _Header extends StatelessWidget {
                                   ? scheme.onPrimary
                                   : scheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
+                              shadows: selected == item
+                                  ? _categoryOutlineShadows
+                                  : null,
                             ),
                           ),
                         ),
@@ -571,16 +637,54 @@ class _FullscreenTrackList extends StatelessWidget {
   }
 }
 
+class _RetainedCoverPage extends StatefulWidget {
+  const _RetainedCoverPage({required this.keepAlive, required this.child});
+
+  final bool keepAlive;
+  final Widget child;
+
+  @override
+  State<_RetainedCoverPage> createState() => _RetainedCoverPageState();
+}
+
+class _RetainedCoverPageState extends State<_RetainedCoverPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => widget.keepAlive;
+
+  @override
+  void didUpdateWidget(_RetainedCoverPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keepAlive != widget.keepAlive) updateKeepAlive();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}
+
 class _CoverFlow extends StatelessWidget {
   const _CoverFlow({
     required this.controller,
     required this.pages,
-    required this.currentCoverKey,
+    required this.coverKeyFor,
+    required this.keepCoverAlive,
+    required this.onPageChanged,
+    required this.coverSwitching,
+    required this.onDragStart,
+    required this.onDragEnd,
   });
 
   final PlayerController controller;
   final PageController pages;
-  final GlobalKey currentCoverKey;
+  final GlobalKey Function(MusicCollection collection) coverKeyFor;
+  final bool Function(MusicCollection collection) keepCoverAlive;
+  final ValueChanged<int> onPageChanged;
+  final bool coverSwitching;
+  final VoidCallback onDragStart;
+  final VoidCallback onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -592,143 +696,203 @@ class _CoverFlow extends StatelessWidget {
         ),
       );
     }
-    return PageView.builder(
-      key: const ValueKey('covers'),
-      reverse: true,
-      controller: pages,
-      itemCount: controller.visible.length,
-      onPageChanged: controller.browseTo,
-      itemBuilder: (context, index) => AnimatedBuilder(
-        animation: pages,
-        builder: (context, child) {
-          final page = pages.hasClients && pages.position.haveDimensions
-              ? pages.page ?? controller.browsedIndex.toDouble()
-              : controller.browsedIndex.toDouble();
-          final distance = (index - page).clamp(-1.0, 1.0);
-          final scale = 1 - distance.abs() * .28;
-          return Opacity(
-            opacity: 1 - distance.abs() * .28,
-            child: Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, .0012)
-                ..rotateY(-distance * .18)
-                ..scaleByDouble(scale, scale, 1, 1),
-              child: child,
-            ),
-          );
-        },
-        child: GestureDetector(
-          onTap: index == controller.browsedIndex
-              ? null
-              : () => pages.animateToPage(
-                  index,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                ),
-          onDoubleTap: index == controller.browsedIndex
-              ? () => controller.activateCentered(index)
-              : null,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final scaler = MediaQuery.textScalerOf(context);
-              final captionHeight = 78 + scaler.scale(28) + scaler.scale(18);
-              final coverSize = math.max(
-                0.0,
-                math.min(
-                  constraints.maxWidth - 16,
-                  constraints.maxHeight - 180 - captionHeight,
-                ),
-              );
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 180),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox.square(
-                        key: Key('cover-art-$index'),
-                        dimension: coverSize,
-                        child: KeyedSubtree(
-                          key: index == controller.browsedIndex
-                              ? currentCoverKey
-                              : null,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  _fallbackCoverColor(index),
-                                  _fallbackCoverColor(
-                                    index,
-                                  ).withValues(alpha: .55),
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: .22),
-                                  blurRadius: 28,
-                                  offset: const Offset(0, 16),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: controller.visible[index].coverUrl.isEmpty
-                                  ? Center(
-                                      child: Icon(
-                                        Icons.graphic_eq_rounded,
-                                        size: 72,
-                                        color: Colors.white.withValues(
-                                          alpha: .82,
-                                        ),
-                                      ),
-                                    )
-                                  : CachedNetworkImage(
-                                      imageUrl:
-                                          controller.visible[index].coverUrl,
-                                      httpHeaders: neteaseImageHeaders,
-                                      cacheManager:
-                                          PersistentCoverCache.instance,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        controller.visible[index].title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        controller.visible[index].subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 56),
-                    ],
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth != 0) return false;
+        if (notification is ScrollStartNotification &&
+            notification.dragDetails != null) {
+          onDragStart();
+        } else if (notification is ScrollEndNotification) {
+          onDragEnd();
+        }
+        return false;
+      },
+      child: Listener(
+        onPointerUp: (_) => onDragEnd(),
+        onPointerCancel: (_) => onDragEnd(),
+        child: PageView.builder(
+          key: const ValueKey('covers'),
+          reverse: true,
+          controller: pages,
+          itemCount: controller.visible.length,
+          onPageChanged: onPageChanged,
+          itemBuilder: (context, index) => _RetainedCoverPage(
+            keepAlive: keepCoverAlive(controller.visible[index]),
+            child: AnimatedBuilder(
+              animation: pages,
+              builder: (context, child) {
+                final page = pages.hasClients && pages.position.haveDimensions
+                    ? pages.page ?? controller.browsedIndex.toDouble()
+                    : controller.browsedIndex.toDouble();
+                final distance = (index - page).clamp(-1.0, 1.0);
+                final scale = 1 - distance.abs() * .28;
+                return Opacity(
+                  opacity: 1 - distance.abs() * .28,
+                  child: Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, .0012)
+                      ..rotateY(-distance * .18)
+                      ..scaleByDouble(scale, scale, 1, 1),
+                    child: child,
                   ),
+                );
+              },
+              child: GestureDetector(
+                onTap: index == controller.browsedIndex
+                    ? null
+                    : () => pages.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                      ),
+                onDoubleTap: index == controller.browsedIndex
+                    ? () => controller.activateCentered(index)
+                    : null,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final scaler = MediaQuery.textScalerOf(context);
+                    final captionHeight =
+                        78 + scaler.scale(28) + scaler.scale(18);
+                    final coverSize = math.max(
+                      0.0,
+                      math.min(
+                        constraints.maxWidth - 16,
+                        constraints.maxHeight - 180 - captionHeight,
+                      ),
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 180),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedScale(
+                              key: Key('cover-switch-scale-$index'),
+                              scale: coverSwitching ? .5 : 1,
+                              duration: Duration(
+                                milliseconds: coverSwitching ? 110 : 260,
+                              ),
+                              curve: Curves.easeOutCubic,
+                              child: SizedBox.square(
+                                key: Key('cover-art-$index'),
+                                dimension: coverSize,
+                                child: KeyedSubtree(
+                                  key: coverKeyFor(controller.visible[index]),
+                                  child: DecoratedBox(
+                                    key: Key('cover-surface-$index'),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          _fallbackCoverColor(index),
+                                          _fallbackCoverColor(
+                                            index,
+                                          ).withValues(alpha: .55),
+                                        ],
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: .22,
+                                          ),
+                                          blurRadius: 28,
+                                          offset: const Offset(0, 16),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child:
+                                          controller
+                                              .visible[index]
+                                              .coverUrl
+                                              .isEmpty
+                                          ? Center(
+                                              child: Icon(
+                                                Icons.graphic_eq_rounded,
+                                                size: 72,
+                                                color: Colors.white.withValues(
+                                                  alpha: .82,
+                                                ),
+                                              ),
+                                            )
+                                          : CachedNetworkImage(
+                                              imageUrl: controller
+                                                  .visible[index]
+                                                  .coverUrl,
+                                              httpHeaders: neteaseImageHeaders,
+                                              cacheManager:
+                                                  PersistentCoverCache.instance,
+                                              memCacheWidth: math.max(
+                                                1,
+                                                math.min(
+                                                  1024,
+                                                  (coverSize *
+                                                          MediaQuery.devicePixelRatioOf(
+                                                            context,
+                                                          ))
+                                                      .ceil(),
+                                                ),
+                                              ),
+                                              fadeInDuration: Duration.zero,
+                                              fadeOutDuration: Duration.zero,
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              controller.visible[index].title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              controller.visible[index].subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 56),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+const _categoryOutlineShadows = [
+  Shadow(color: Color(0x99000000), offset: Offset(-.5, -.5)),
+  Shadow(color: Color(0x99000000), offset: Offset(0, -.5)),
+  Shadow(color: Color(0x99000000), offset: Offset(.5, -.5)),
+  Shadow(color: Color(0x99000000), offset: Offset(-.5, 0)),
+  Shadow(color: Color(0x99000000), offset: Offset(.5, 0)),
+  Shadow(color: Color(0x99000000), offset: Offset(-.5, .5)),
+  Shadow(color: Color(0x99000000), offset: Offset(0, .5)),
+  Shadow(color: Color(0x99000000), offset: Offset(.5, .5)),
+];
 
 Color _fallbackCoverColor(int index) => Color.lerp(
   const Color(0xffe5473e),
