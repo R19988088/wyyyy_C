@@ -126,6 +126,7 @@ class PlayerController extends ChangeNotifier {
         _visible = repository.collections(restored.kind);
         _activeCollection = restored;
         browsedIndex = math.max(0, _visible.indexOf(restored));
+        _browsedIndexes[restored.kind] = browsedIndex;
         playingCollectionIndex = browsedIndex;
         trackIndex = playbackRepository.restoredTrackIndex;
       }
@@ -153,6 +154,11 @@ class PlayerController extends ChangeNotifier {
   StreamSubscription<PlaybackSnapshot>? _playbackSubscription;
   int _activationGeneration = 0;
   bool loadingTracks = false;
+  final Map<LibraryKind, int> _browsedIndexes = {
+    for (final kind in LibraryKind.values) kind: 0,
+  };
+  Timer? _sleepTimer;
+  int sleepTimerMinutes = 0;
 
   List<MusicCollection> get visible =>
       _visible.isEmpty ? [_emptyCollection] : _visible;
@@ -179,9 +185,13 @@ class PlayerController extends ChangeNotifier {
   }
 
   void selectKind(LibraryKind value) {
+    _browsedIndexes[kind] = browsedIndex;
     kind = value;
     _visible = repository.collections(value);
-    browsedIndex = 0;
+    browsedIndex = (_browsedIndexes[value] ?? 0).clamp(
+      0,
+      math.max(0, _visible.length - 1),
+    );
     final active = _activeCollection;
     final activeIndex = active == null ? -1 : _visible.indexOf(active);
     playingCollectionIndex = activeIndex < 0 ? 0 : activeIndex;
@@ -197,6 +207,26 @@ class PlayerController extends ChangeNotifier {
   void browseTo(int index) {
     if (_visible.isEmpty) return;
     browsedIndex = index.clamp(0, _visible.length - 1);
+    _browsedIndexes[kind] = browsedIndex;
+    notifyListeners();
+  }
+
+  void cycleSleepTimer() {
+    sleepTimerMinutes = switch (sleepTimerMinutes) {
+      0 => 60,
+      60 => 120,
+      _ => 0,
+    };
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    if (sleepTimerMinutes > 0) {
+      _sleepTimer = Timer(Duration(minutes: sleepTimerMinutes), () {
+        sleepTimerMinutes = 0;
+        _sleepTimer = null;
+        if (playing) togglePlaying();
+        notifyListeners();
+      });
+    }
     notifyListeners();
   }
 
@@ -332,6 +362,7 @@ class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _sleepTimer?.cancel();
     _playbackSubscription?.cancel();
     super.dispose();
   }

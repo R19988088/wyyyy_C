@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'player.dart';
 import 'services/media_cache.dart';
 import 'src/rust/api.dart' as api;
+import 'src/rust/models.dart' as rust;
 
 String decodeQrSvg(String dataUrl) {
   const prefix = 'data:image/svg+xml;base64,';
@@ -44,11 +45,20 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool dark = widget.dark;
   String _cacheSize = '正在计算…';
   bool _clearingCache = false;
+  rust.Profile? _profile;
 
   @override
   void initState() {
     super.initState();
     _loadCacheSize();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await api.restoreSession();
+      if (mounted) setState(() => _profile = profile);
+    } catch (_) {}
   }
 
   Future<void> _loadCacheSize() async {
@@ -118,8 +128,12 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           ListTile(
             leading: const Icon(Icons.qr_code_rounded),
-            title: const Text('登录网易云音乐'),
-            subtitle: const Text('同步你的收藏'),
+            title: Text(_profile == null ? '登录网易云音乐' : '已登录'),
+            subtitle: Text(
+              _profile == null
+                  ? '同步你的收藏'
+                  : '${_profile!.nickname}  ·  ID ${_profile!.id}',
+            ),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => QrLoginPage(repository: widget.repository),

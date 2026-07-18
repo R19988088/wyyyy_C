@@ -67,4 +67,28 @@ void main() {
       expect(PlayerController.returnPath(from: 0, to: 7), [4, 7]);
     },
   );
+
+  test('switching categories restores each browsed cover', () {
+    final controller = PlayerController(InMemoryPlayerRepository.demo())
+      ..browseTo(2)
+      ..selectKind(LibraryKind.playlist)
+      ..browseTo(1)
+      ..selectKind(LibraryKind.album);
+
+    expect(controller.browsedIndex, 2);
+    controller.selectKind(LibraryKind.playlist);
+    expect(controller.browsedIndex, 1);
+  });
+
+  test('sleep timer cycles through 60, 120, and off', () {
+    final controller = PlayerController(InMemoryPlayerRepository.demo());
+
+    controller.cycleSleepTimer();
+    expect(controller.sleepTimerMinutes, 60);
+    controller.cycleSleepTimer();
+    expect(controller.sleepTimerMinutes, 120);
+    controller.cycleSleepTimer();
+    expect(controller.sleepTimerMinutes, 0);
+    controller.dispose();
+  });
 }

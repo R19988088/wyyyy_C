@@ -50,60 +50,86 @@ class GlassPlayer extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              GestureDetector(
-                key: const Key('player-metadata'),
-                onDoubleTap: onMetadataDoubleTap,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: scheme.primary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child:
-                          (controller.track.coverUrl ??
-                                  controller.playingCollection.coverUrl)
-                              .isEmpty
-                          ? const Icon(
-                              Icons.music_note_rounded,
-                              color: Colors.white,
-                            )
-                          : CachedNetworkImage(
-                              imageUrl:
-                                  controller.track.coverUrl ??
-                                  controller.playingCollection.coverUrl,
-                              cacheManager: PersistentCoverCache.instance,
-                              fit: BoxFit.cover,
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      key: const Key('player-metadata'),
+                      onDoubleTap: onMetadataDoubleTap,
+                      child: Row(
                         children: [
-                          Text(
-                            controller.track.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          Container(
+                            width: 44,
+                            height: 44,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: scheme.primary,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child:
+                                (controller.track.coverUrl ??
+                                        controller.playingCollection.coverUrl)
+                                    .isEmpty
+                                ? const Icon(
+                                    Icons.music_note_rounded,
+                                    color: Colors.white,
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl:
+                                        controller.track.coverUrl ??
+                                        controller.playingCollection.coverUrl,
+                                    cacheManager: PersistentCoverCache.instance,
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
-                          Text(
-                            controller.track.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 12,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  controller.track.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  controller.track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  SizedBox(
+                    width: 48,
+                    child: IconButton(
+                      key: const Key('sleep-timer'),
+                      tooltip: controller.sleepTimerMinutes == 0
+                          ? '定时停止播放'
+                          : '${controller.sleepTimerMinutes} 分钟后停止播放',
+                      onPressed: controller.cycleSleepTimer,
+                      icon: controller.sleepTimerMinutes == 0
+                          ? const Icon(Icons.hourglass_empty_rounded)
+                          : Text(
+                              '${controller.sleepTimerMinutes}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
               SizedBox(
                 key: const Key('player-controls'),

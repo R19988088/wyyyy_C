@@ -57,10 +57,13 @@ class _PlayerPageState extends State<PlayerPage> {
     super.dispose();
   }
 
-  void _selectKind(LibraryKind kind, {int initialPage = 0}) {
+  void _selectKind(LibraryKind kind) {
     controller.selectKind(kind);
     pages.dispose();
-    pages = PageController(viewportFraction: .69, initialPage: initialPage);
+    pages = PageController(
+      viewportFraction: .69,
+      initialPage: controller.browsedIndex,
+    );
   }
 
   Future<void> _returnToPlaying() async {
@@ -103,35 +106,35 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                _Header(
-                  selected: controller.kind,
-                  onSelected: _selectKind,
-                  openSettings: () async {
-                    await widget.openSettings();
-                    controller.reloadVisible();
-                  },
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    onVerticalDragEnd: (details) {
-                      if (details.primaryVelocity == null) return;
-                      final next = details.primaryVelocity! < 0;
-                      setState(() => listMode = next);
-                      if (next) controller.ensureBrowsedTracks();
+    return PopScope(
+      canPop: !listMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && listMode) setState(() => listMode = false);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  _Header(
+                    selected: controller.kind,
+                    onSelected: _selectKind,
+                    openSettings: () async {
+                      await widget.openSettings();
+                      controller.reloadVisible();
                     },
-                    child: NotificationListener<OverscrollNotification>(
-                      onNotification: (notification) {
-                        if (listMode && notification.overscroll < -8) {
-                          setState(() => listMode = false);
-                          return true;
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onVerticalDragEnd: (details) {
+                        if (listMode ||
+                            details.primaryVelocity == null ||
+                            details.primaryVelocity! >= 0) {
+                          return;
                         }
-                        return false;
+                        setState(() => listMode = true);
+                        controller.ensureBrowsedTracks();
                       },
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 260),
@@ -141,20 +144,19 @@ class _PlayerPageState extends State<PlayerPage> {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 190),
-              ],
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 14,
-              child: GlassPlayer(
-                controller: controller,
-                onMetadataDoubleTap: _returnToPlaying,
+                ],
               ),
-            ),
-          ],
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 14,
+                child: GlassPlayer(
+                  controller: controller,
+                  onMetadataDoubleTap: _returnToPlaying,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -350,7 +352,7 @@ class _TrackList extends StatelessWidget {
     }
     return ListView.separated(
       key: const ValueKey('tracks'),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 210),
       itemCount: collection.tracks.length,
       separatorBuilder: (_, _) => Divider(
         height: 1,

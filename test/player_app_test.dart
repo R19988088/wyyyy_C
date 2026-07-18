@@ -15,6 +15,16 @@ void main() {
     expect(find.byKey(const Key('player-metadata')), findsOneWidget);
     expect(find.byKey(const Key('player-controls')), findsOneWidget);
     expect(find.byKey(const Key('player-progress')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('sleep-timer')));
+    await tester.pump();
+    expect(find.text('60'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sleep-timer')));
+    await tester.pump();
+    expect(find.text('120'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sleep-timer')));
+    await tester.pump();
+    expect(find.byIcon(Icons.hourglass_empty_rounded), findsOneWidget);
   });
 
   testWidgets('settings switches theme and opens QR login', (tester) async {
@@ -36,5 +46,30 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('扫码登录'), findsOneWidget);
+  });
+
+  testWidgets('back gesture returns from track list to the same cover', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('covers')),
+      const Offset(-500, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.fling(
+      find.byKey(const ValueKey('covers')),
+      const Offset(0, -400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('tracks')), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('covers')), findsOneWidget);
+    expect(find.text('时间的歌'), findsOneWidget);
   });
 }

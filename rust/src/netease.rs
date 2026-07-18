@@ -627,6 +627,8 @@ pub(crate) fn parse_playlists(
                 .and_then(|value| clean_string(value.get("nickname")))
                 .unwrap_or_default(),
             cover_url: clean_string(item.get("coverImgUrl"))
+                .or_else(|| clean_string(item.get("coverUrl")))
+                .or_else(|| clean_string(item.get("picUrl")))
                 .map(normalize_https)
                 .unwrap_or_default(),
             track_count: value_u64(item.get("trackCount"))
