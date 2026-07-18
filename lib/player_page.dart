@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'cover_scrubber.dart';
 import 'player.dart';
 import 'services/media_cache.dart';
 import 'widgets/glass_player.dart';
@@ -26,10 +27,14 @@ class _PlayerPageState extends State<PlayerPage>
   late final PlayerController controller;
   late PageController pages;
   late final AnimationController modeTransition;
+  late final CoverScrubSpeedController scrubSpeed;
   final contentKey = GlobalKey();
   final currentCoverKey = GlobalKey();
   Rect? coverStartRect;
   MusicCollection? transitionCollection;
+  LibraryKind? listOriginKind;
+  String? listOriginId;
+  int? listOriginIndex;
   bool listMode = false;
 
   @override
@@ -40,6 +45,7 @@ class _PlayerPageState extends State<PlayerPage>
       vsync: this,
       duration: const Duration(milliseconds: 420),
     );
+    scrubSpeed = CoverScrubSpeedController();
     pages = PageController(viewportFraction: .69);
     final repository = widget.repository;
     if (repository is PlaybackRepository &&
@@ -89,6 +95,9 @@ class _PlayerPageState extends State<PlayerPage>
           coverBox.size;
     }
     transitionCollection = controller.visible[controller.browsedIndex];
+    listOriginKind = controller.kind;
+    listOriginId = transitionCollection!.id;
+    listOriginIndex = controller.browsedIndex;
     setState(() => listMode = true);
     controller.ensureBrowsedTracks();
     await modeTransition.forward(from: 0);
@@ -96,14 +105,57 @@ class _PlayerPageState extends State<PlayerPage>
 
   Future<void> _closeList() async {
     if (!listMode || modeTransition.status == AnimationStatus.reverse) return;
+    _restoreListOriginPage();
     await modeTransition.reverse();
     if (mounted) {
       setState(() {
         listMode = false;
         coverStartRect = null;
         transitionCollection = null;
+        listOriginKind = null;
+        listOriginId = null;
+        listOriginIndex = null;
       });
     }
+  }
+
+  void _restoreListOriginPage() {
+    final originKind = listOriginKind;
+    if (originKind == null) return;
+    if (controller.kind != originKind) controller.selectKind(originKind);
+    final byId = controller.visible.indexWhere(
+      (collection) => collection.id == listOriginId,
+    );
+    final target = (byId >= 0 ? byId : listOriginIndex ?? 0).clamp(
+      0,
+      controller.visible.length - 1,
+    );
+    final oldPages = pages;
+    pages = PageController(viewportFraction: .69, initialPage: target);
+    controller.browseTo(target);
+    if (mounted) setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
+  }
+
+  void _scrubCovers(DragUpdateDetails details) {
+    final step = scrubSpeed.update(
+      delta: details.primaryDelta ?? 0,
+      timestamp:
+          details.sourceTimeStamp ??
+          Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
+    );
+    if (step == null) return;
+    final target = (controller.browsedIndex + step).clamp(
+      0,
+      controller.visible.length - 1,
+    );
+    if (target == controller.browsedIndex) return;
+    controller.browseTo(target);
+    pages.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 90),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _returnToPlaying() async {
@@ -115,7 +167,15 @@ class _PlayerPageState extends State<PlayerPage>
       pages.dispose();
       pages = PageController(viewportFraction: .69, initialPage: start);
       controller.browseTo(start);
-      setState(() => listMode = false);
+      modeTransition.value = 0;
+      setState(() {
+        listMode = false;
+        coverStartRect = null;
+        transitionCollection = null;
+        listOriginKind = null;
+        listOriginId = null;
+        listOriginIndex = null;
+      });
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || !pages.hasClients) return;
       await pages.animateToPage(
@@ -172,6 +232,9 @@ class _PlayerPageState extends State<PlayerPage>
                             controller: controller,
                             pages: pages,
                             currentCoverKey: currentCoverKey,
+                            onScrubStart: scrubSpeed.reset,
+                            onScrubUpdate: _scrubCovers,
+                            onScrubEnd: scrubSpeed.reset,
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -236,6 +299,9 @@ class _CoverMode extends StatelessWidget {
     required this.controller,
     required this.pages,
     required this.currentCoverKey,
+    required this.onScrubStart,
+    required this.onScrubUpdate,
+    required this.onScrubEnd,
     required this.progress,
     required this.onSelected,
     required this.openSettings,
@@ -245,6 +311,9 @@ class _CoverMode extends StatelessWidget {
   final PlayerController controller;
   final PageController pages;
   final GlobalKey currentCoverKey;
+  final VoidCallback onScrubStart;
+  final ValueChanged<DragUpdateDetails> onScrubUpdate;
+  final VoidCallback onScrubEnd;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
   final Future<void> Function() openSettings;
@@ -278,6 +347,9 @@ class _CoverMode extends StatelessWidget {
                   controller: controller,
                   pages: pages,
                   currentCoverKey: currentCoverKey,
+                  onScrubStart: onScrubStart,
+                  onScrubUpdate: onScrubUpdate,
+                  onScrubEnd: onScrubEnd,
                 ),
               ),
             ),
@@ -353,28 +425,66 @@ class _Header extends StatelessWidget {
       LibraryKind.playlist: '歌单',
       LibraryKind.podcast: '播客',
     };
-    return Padding(
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
       key: const Key('library-header'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
-      child: Row(
+      height: 68,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          for (final item in LibraryKind.values)
-            TextButton(
-              onPressed: () => onSelected(item),
-              child: Text(
-                labels[item]!,
-                style: TextStyle(
-                  fontWeight: selected == item
-                      ? FontWeight.w700
-                      : FontWeight.w400,
-                ),
+          Positioned(
+            left: 56,
+            right: 56,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                key: const Key('category-tabs'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final item in LibraryKind.values)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: InkWell(
+                        onTap: () => onSelected(item),
+                        borderRadius: BorderRadius.circular(18),
+                        child: AnimatedContainer(
+                          key: Key('category-${item.name}'),
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 15,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected == item ? scheme.primary : null,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            labels[item]!,
+                            style: TextStyle(
+                              color: selected == item
+                                  ? scheme.onPrimary
+                                  : scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-          const Spacer(),
-          IconButton(
-            onPressed: () => openSettings(),
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: '设置',
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                key: const Key('settings-menu'),
+                onPressed: () => openSettings(),
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: '设置',
+              ),
+            ),
           ),
         ],
       ),
@@ -425,11 +535,17 @@ class _CoverFlow extends StatelessWidget {
     required this.controller,
     required this.pages,
     required this.currentCoverKey,
+    required this.onScrubStart,
+    required this.onScrubUpdate,
+    required this.onScrubEnd,
   });
 
   final PlayerController controller;
   final PageController pages;
   final GlobalKey currentCoverKey;
+  final VoidCallback onScrubStart;
+  final ValueChanged<DragUpdateDetails> onScrubUpdate;
+  final VoidCallback onScrubEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -467,21 +583,20 @@ class _CoverFlow extends StatelessWidget {
           );
         },
         child: GestureDetector(
-          onTap: () {
-            if (index == controller.browsedIndex) {
-              controller.activateCentered(index);
-            } else {
-              pages.animateToPage(
-                index,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-              );
-            }
-          },
+          onTap: index == controller.browsedIndex
+              ? null
+              : () => pages.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                ),
+          onDoubleTap: index == controller.browsedIndex
+              ? () => controller.activateCentered(index)
+              : null,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final scaler = MediaQuery.textScalerOf(context);
-              final captionHeight = 22 + scaler.scale(28) + scaler.scale(18);
+              final captionHeight = 78 + scaler.scale(28) + scaler.scale(18);
               final coverSize = math.max(
                 0.0,
                 math.min(
@@ -563,6 +678,20 @@ class _CoverFlow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      SizedBox(
+                        key: index == controller.browsedIndex
+                            ? const Key('cover-scrubber')
+                            : null,
+                        height: 56,
+                        width: coverSize,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: (_) => onScrubStart(),
+                          onHorizontalDragUpdate: onScrubUpdate,
+                          onHorizontalDragEnd: (_) => onScrubEnd(),
+                          onHorizontalDragCancel: onScrubEnd,
                         ),
                       ),
                     ],
