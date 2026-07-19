@@ -183,16 +183,13 @@ class _PlayerPageState extends State<PlayerPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
   }
 
-  void _scrubCovers(DragUpdateDetails details) {
-    final step = scrubSpeed.update(
-      delta: details.primaryDelta ?? 0,
-      timestamp: WidgetsBinding.instance.currentSystemFrameTimeStamp,
-    );
+  void _scrubCovers(double delta, Duration timestamp, {required bool cycle}) {
+    final step = scrubSpeed.update(delta: delta, timestamp: timestamp);
     if (step == null) return;
-    final target = (controller.browsedIndex + step).clamp(
-      0,
-      controller.visible.length - 1,
-    );
+    final count = controller.visible.length;
+    final target = cycle
+        ? ((controller.browsedIndex + step) % count + count) % count
+        : (controller.browsedIndex + step).clamp(0, count - 1);
     if (target == controller.browsedIndex) return;
     controller.browseTo(target);
     pages.animateToPage(
@@ -393,7 +390,8 @@ class _CoverMode extends StatelessWidget {
   final VoidCallback onPageDragStart;
   final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
-  final ValueChanged<DragUpdateDetails> onScrubUpdate;
+  final void Function(double delta, Duration timestamp, {required bool cycle})
+  onScrubUpdate;
   final VoidCallback onScrubEnd;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
@@ -402,6 +400,9 @@ class _CoverMode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final wheelExpanded = screenSize.height >= 700;
+    final wheelSide = math.max(24.0, (screenSize.width - 220) / 2);
     return IgnorePointer(
       ignoring: progress > 0,
       child: Column(
@@ -454,28 +455,16 @@ class _CoverMode extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  left: 24,
-                  right: 24,
-                  bottom: 180,
-                  height: 56,
-                  child: Listener(
-                    key: const Key('cover-scrubber'),
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (_) => onScrubStart(),
-                    onPointerUp: (_) => onScrubEnd(),
-                    onPointerCancel: (_) => onScrubEnd(),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onHorizontalDragUpdate: onScrubUpdate,
-                      onHorizontalDragEnd: (_) => onScrubEnd(),
-                      onHorizontalDragCancel: onScrubEnd,
-                      onVerticalDragEnd: (details) {
-                        if (details.primaryVelocity != null &&
-                            details.primaryVelocity != 0) {
-                          openList();
-                        }
-                      },
-                    ),
+                  left: wheelSide,
+                  right: wheelSide,
+                  bottom: wheelExpanded ? 156 : 180,
+                  height: wheelExpanded ? 176 : 56,
+                  child: _CoverWheelRegion(
+                    key: const Key('cover-wheel'),
+                    onStart: onScrubStart,
+                    onUpdate: onScrubUpdate,
+                    onEnd: onScrubEnd,
+                    onVerticalSwipe: openList,
                   ),
                 ),
               ],
@@ -483,6 +472,102 @@ class _CoverMode extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CoverWheelRegion extends StatefulWidget {
+  const _CoverWheelRegion({
+    super.key,
+    required this.onStart,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onVerticalSwipe,
+  });
+
+  final VoidCallback onStart;
+  final void Function(double delta, Duration timestamp, {required bool cycle})
+  onUpdate;
+  final VoidCallback onEnd;
+  final Future<void> Function() onVerticalSwipe;
+
+  @override
+  State<_CoverWheelRegion> createState() => _CoverWheelRegionState();
+}
+
+class _CoverWheelRegionState extends State<_CoverWheelRegion> {
+  Offset? _previousPosition;
+  Offset? _startPosition;
+  bool _circularMoved = false;
+  bool _sampled = false;
+
+  void _start(PointerDownEvent event) {
+    _startPosition = event.localPosition;
+    _previousPosition = event.localPosition;
+    _circularMoved = false;
+    _sampled = false;
+    widget.onStart();
+  }
+
+  void _move(PointerMoveEvent event) {
+    final previous = _previousPosition;
+    if (previous == null) return;
+    final center = (context.size ?? Size.zero).center(Offset.zero);
+    final previousVector = previous - center;
+    final currentVector = event.localPosition - center;
+    final previousRadius = previousVector.distance;
+    final currentRadius = currentVector.distance;
+    final radialDelta = currentRadius - previousRadius;
+    var angularDelta =
+        math.atan2(currentVector.dy, currentVector.dx) -
+        math.atan2(previousVector.dy, previousVector.dx);
+    if (angularDelta > math.pi) angularDelta -= 2 * math.pi;
+    if (angularDelta < -math.pi) angularDelta += 2 * math.pi;
+    final tangentialDelta = angularDelta * (previousRadius + currentRadius) / 2;
+    final circular =
+        previousRadius >= 24 &&
+        currentRadius >= 24 &&
+        tangentialDelta.abs() > radialDelta.abs();
+    _circularMoved |= circular;
+    final delta = circular
+        ? tangentialDelta
+        : (_sampled ? event.delta.dx : 0.0);
+    widget.onUpdate(
+      delta,
+      WidgetsBinding.instance.currentSystemFrameTimeStamp,
+      cycle: circular,
+    );
+    _sampled = true;
+    _previousPosition = event.localPosition;
+  }
+
+  void _finish() {
+    final start = _startPosition;
+    final end = _previousPosition;
+    final circularMoved = _circularMoved;
+    _startPosition = null;
+    _previousPosition = null;
+    _circularMoved = false;
+    _sampled = false;
+    widget.onEnd();
+    if (!circularMoved &&
+        start != null &&
+        end != null &&
+        (end.dy - start.dy).abs() > 32 &&
+        (end.dy - start.dy).abs() > (end.dx - start.dx).abs()) {
+      widget.onVerticalSwipe();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      key: const Key('cover-scrubber'),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _start,
+      onPointerMove: _move,
+      onPointerUp: (_) => _finish(),
+      onPointerCancel: (_) => _finish(),
     );
   }
 }
@@ -1021,23 +1106,44 @@ class _CoverFlow extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 18),
-                            Text(
-                              controller.visible[index].title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            Text(
-                              controller.visible[index].subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                            SizedBox(
+                              height: scaler.scale(30) + scaler.scale(18),
+                              child: OverflowBox(
+                                minWidth: coverSize,
+                                maxWidth: coverSize,
+                                child: SizedBox(
+                                  key: Key('cover-caption-$index'),
+                                  width: coverSize,
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        controller.visible[index].title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      Text(
+                                        controller.visible[index].subtitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 56),
                           ],

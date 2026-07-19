@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -247,6 +249,75 @@ void main() {
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+  });
+
+  testWidgets('hidden wheel continuously cycles covers in both directions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final center = tester.getCenter(wheel);
+    const radius = 70.0;
+    Offset point(double angle) =>
+        center + Offset(math.cos(angle), math.sin(angle)) * radius;
+
+    final clockwise = await tester.startGesture(point(0));
+    await clockwise.moveTo(point(.35));
+    await tester.pump(const Duration(milliseconds: 100));
+    await clockwise.moveTo(point(.7));
+    await tester.pump(const Duration(milliseconds: 100));
+    await clockwise.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+
+    final counterClockwise = await tester.startGesture(point(0));
+    await counterClockwise.moveTo(point(-.35));
+    await tester.pump(const Duration(milliseconds: 100));
+    await counterClockwise.moveTo(point(-.7));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    await counterClockwise.moveTo(point(-1.05));
+    await tester.pump(const Duration(milliseconds: 100));
+    await counterClockwise.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+  });
+
+  testWidgets('cover caption uses the cover width', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const Key('cover-caption-0'))).width,
+      closeTo(tester.getSize(find.byKey(const Key('cover-art-0'))).width, 1),
     );
   });
 
