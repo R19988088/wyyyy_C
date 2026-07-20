@@ -566,7 +566,7 @@ void main() {
       find.byKey(const Key('cover-switch-scale')),
     );
     expect(restoredScale.scale, 1);
-    expect(restoredScale.curve, Curves.elasticOut);
+    expect(restoredScale.curve, Curves.easeOutBack);
     await tester.pumpAndSettle();
     final restoredSpacing =
         (tester.getCenter(find.byKey(const Key('cover-art-1'))).dx -
@@ -851,36 +851,56 @@ void main() {
     },
   );
 
-  testWidgets('vertical swipe from the scrubber still opens the track list', (
+  testWidgets('upward swipe from the scrubber expands into the track list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-wheel'))),
+    );
+    await gesture.moveBy(const Offset(0, -160));
+    await tester.pump();
+    expect(find.byKey(const Key('cover-expansion')), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
+  });
+
+  testWidgets('downward swipe does not turn covers or open the track list', (
     tester,
   ) async {
     await tester.pumpWidget(
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
 
-    await tester.fling(
-      find.byKey(const Key('cover-scrubber')),
-      const Offset(0, -400),
-      1000,
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final gesture = await tester.startGesture(tester.getCenter(wheel));
+    await gesture.moveBy(const Offset(20, 40));
+    await tester.pump();
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('cover-switch-scale')))
+          .scale,
+      .72,
     );
+    await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
-  });
-
-  testWidgets('downward swipe also opens the track list', (tester) async {
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
-
-    await tester.fling(
-      find.byKey(const ValueKey('covers')),
-      const Offset(0, 400),
-      1000,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
   });
 
   testWidgets('track list shows metadata numbers and active progress fill', (

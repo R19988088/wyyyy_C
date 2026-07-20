@@ -51,6 +51,7 @@ class _PlayerPageState extends State<PlayerPage>
   String? listOriginId;
   int? listOriginIndex;
   bool listMode = false;
+  bool listSwipeActive = false;
   bool scrubberActive = false;
   bool pageDragActive = false;
   double edgeOverscroll = 0;
@@ -125,7 +126,7 @@ class _PlayerPageState extends State<PlayerPage>
     );
   }
 
-  Future<void> _openList() async {
+  void _prepareListTransition() {
     if (listMode) return;
     final contentBox =
         contentKey.currentContext?.findRenderObject() as RenderBox?;
@@ -144,13 +145,56 @@ class _PlayerPageState extends State<PlayerPage>
     listOriginIndex = controller.browsedIndex;
     setState(() => listMode = true);
     controller.ensureBrowsedTracks();
-    await modeTransition.forward(from: 0);
+  }
+
+  Future<void> _openList() async {
+    if (listMode) return;
+    _prepareListTransition();
+    await modeTransition.animateTo(
+      1,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _beginListSwipe() {
+    _prepareListTransition();
+    if (!listMode) return;
+    setState(() => listSwipeActive = true);
+  }
+
+  void _updateListSwipe(double distance) {
+    if (!listSwipeActive) return;
+    final progress = (distance / (MediaQuery.sizeOf(context).height * .72))
+        .clamp(0.0, 1.0);
+    modeTransition.value = progress;
+  }
+
+  Future<void> _endListSwipe() async {
+    if (!listSwipeActive) return;
+    final complete = modeTransition.value >= .18;
+    setState(() => listSwipeActive = false);
+    if (complete) {
+      await modeTransition.animateTo(1, curve: Curves.easeOutCubic);
+      return;
+    }
+    await modeTransition.animateBack(0, curve: Curves.easeOutCubic);
+    if (mounted) {
+      setState(() {
+        listMode = false;
+        coverStartRect = null;
+        transitionCollection = null;
+        listOriginKind = null;
+        listOriginId = null;
+        listOriginIndex = null;
+      });
+    }
   }
 
   Future<void> _closeList() async {
     if (!listMode || modeTransition.status == AnimationStatus.reverse) return;
     _restoreListOriginPage();
-    await modeTransition.reverse();
+    await modeTransition.animateBack(0, curve: Curves.easeOutCubic);
     if (mounted) {
       setState(() {
         listMode = false;
@@ -317,9 +361,7 @@ class _PlayerPageState extends State<PlayerPage>
                 builder: (context, constraints) => AnimatedBuilder(
                   animation: modeTransition,
                   builder: (context, _) {
-                    final progress = Curves.easeOutCubic.transform(
-                      modeTransition.value,
-                    );
+                    final progress = modeTransition.value;
                     return Stack(
                       fit: StackFit.expand,
                       children: [
@@ -340,6 +382,9 @@ class _PlayerPageState extends State<PlayerPage>
                             onScrubStart: () => _setScrubberActive(true),
                             onScrubUpdate: _scrubCovers,
                             onScrubEnd: () => _setScrubberActive(false),
+                            onVerticalStart: _beginListSwipe,
+                            onVerticalUpdate: _updateListSwipe,
+                            onVerticalEnd: _endListSwipe,
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -414,6 +459,9 @@ class _CoverMode extends StatelessWidget {
     required this.onScrubStart,
     required this.onScrubUpdate,
     required this.onScrubEnd,
+    required this.onVerticalStart,
+    required this.onVerticalUpdate,
+    required this.onVerticalEnd,
     required this.progress,
     required this.onSelected,
     required this.openSettings,
@@ -433,6 +481,9 @@ class _CoverMode extends StatelessWidget {
   final VoidCallback onScrubStart;
   final void Function(double delta, Duration timestamp) onScrubUpdate;
   final VoidCallback onScrubEnd;
+  final VoidCallback onVerticalStart;
+  final ValueChanged<double> onVerticalUpdate;
+  final VoidCallback onVerticalEnd;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
   final Future<void> Function() openSettings;
@@ -462,7 +513,7 @@ class _CoverMode extends StatelessWidget {
                 GestureDetector(
                   onVerticalDragEnd: (details) {
                     if (details.primaryVelocity != null &&
-                        details.primaryVelocity != 0) {
+                        details.primaryVelocity! < 0) {
                       openList();
                     }
                   },
@@ -487,7 +538,7 @@ class _CoverMode extends StatelessWidget {
                             ? Curves.easeOutBack
                             : (coverSwitching
                                   ? Curves.easeOutCubic
-                                  : Curves.elasticOut),
+                                  : Curves.easeOutBack),
                         child: _CoverFlow(
                           controller: controller,
                           pages: pages,
@@ -555,7 +606,9 @@ class _CoverMode extends StatelessWidget {
                     onStart: onScrubStart,
                     onUpdate: onScrubUpdate,
                     onEnd: onScrubEnd,
-                    onVerticalSwipe: openList,
+                    onVerticalStart: onVerticalStart,
+                    onVerticalUpdate: onVerticalUpdate,
+                    onVerticalEnd: onVerticalEnd,
                   ),
                 ),
               ],
@@ -567,19 +620,25 @@ class _CoverMode extends StatelessWidget {
   }
 }
 
+enum _CoverInputMode { pending, wheel, verticalUp, verticalDown }
+
 class _CoverWheelRegion extends StatefulWidget {
   const _CoverWheelRegion({
     super.key,
     required this.onStart,
     required this.onUpdate,
     required this.onEnd,
-    required this.onVerticalSwipe,
+    required this.onVerticalStart,
+    required this.onVerticalUpdate,
+    required this.onVerticalEnd,
   });
 
   final VoidCallback onStart;
   final void Function(double delta, Duration timestamp) onUpdate;
   final VoidCallback onEnd;
-  final Future<void> Function() onVerticalSwipe;
+  final VoidCallback onVerticalStart;
+  final ValueChanged<double> onVerticalUpdate;
+  final VoidCallback onVerticalEnd;
 
   @override
   State<_CoverWheelRegion> createState() => _CoverWheelRegionState();
@@ -588,21 +647,27 @@ class _CoverWheelRegion extends StatefulWidget {
 class _CoverWheelRegionState extends State<_CoverWheelRegion> {
   Offset? _previousPosition;
   Offset? _startPosition;
+  _CoverInputMode _mode = _CoverInputMode.pending;
   bool _circularMoved = false;
   bool _sampled = false;
+  bool _pressed = false;
 
   void _start(PointerDownEvent event) {
     _startPosition = event.localPosition;
     _previousPosition = event.localPosition;
+    _mode = _CoverInputMode.pending;
     _circularMoved = false;
     _sampled = false;
+    _pressed = true;
     widget.onStart();
   }
 
   void _move(PointerMoveEvent event) {
     final previous = _previousPosition;
-    if (previous == null) return;
+    final start = _startPosition;
+    if (previous == null || start == null) return;
     final center = (context.size ?? Size.zero).center(Offset.zero);
+    final startVector = start - center;
     final previousVector = previous - center;
     final currentVector = event.localPosition - center;
     final previousRadius = previousVector.distance;
@@ -618,6 +683,36 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
         previousRadius >= 24 &&
         currentRadius >= 24 &&
         tangentialDelta.abs() > radialDelta.abs();
+    if (_mode == _CoverInputMode.pending) {
+      final displacement = event.localPosition - start;
+      if (displacement.distance < 12) return;
+      final vertical = startVector.distance < 24
+          ? displacement.dy.abs() > displacement.dx.abs()
+          : !circular && displacement.dy.abs() > displacement.dx.abs();
+      if (vertical) {
+        _mode = displacement.dy < 0
+            ? _CoverInputMode.verticalUp
+            : _CoverInputMode.verticalDown;
+        if (_mode == _CoverInputMode.verticalUp) {
+          widget.onEnd();
+          _pressed = false;
+          widget.onVerticalStart();
+        }
+      } else {
+        _mode = _CoverInputMode.wheel;
+      }
+    }
+    if (_mode == _CoverInputMode.verticalUp) {
+      widget.onVerticalUpdate(
+        (start.dy - event.localPosition.dy).clamp(0, double.infinity),
+      );
+      _previousPosition = event.localPosition;
+      return;
+    }
+    if (_mode == _CoverInputMode.verticalDown) {
+      _previousPosition = event.localPosition;
+      return;
+    }
     _circularMoved |= circular;
     final delta = _circularMoved
         ? tangentialDelta
@@ -629,19 +724,16 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
 
   void _finish() {
     final start = _startPosition;
-    final end = _previousPosition;
-    final circularMoved = _circularMoved;
     _startPosition = null;
     _previousPosition = null;
+    final mode = _mode;
+    _mode = _CoverInputMode.pending;
     _circularMoved = false;
     _sampled = false;
-    widget.onEnd();
-    if (!circularMoved &&
-        start != null &&
-        end != null &&
-        (end.dy - start.dy).abs() > 32 &&
-        (end.dy - start.dy).abs() > (end.dx - start.dx).abs()) {
-      widget.onVerticalSwipe();
+    if (_pressed) widget.onEnd();
+    _pressed = false;
+    if (mode == _CoverInputMode.verticalUp && start != null) {
+      widget.onVerticalEnd();
     }
   }
 
