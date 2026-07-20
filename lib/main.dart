@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -9,6 +11,7 @@ import 'player.dart';
 import 'player_page.dart';
 import 'rust_player_repository.dart';
 import 'services/audio_handler.dart';
+import 'services/cover_feedback.dart';
 import 'settings_page.dart';
 import 'src/rust/api.dart' as rust_api;
 import 'src/rust/frb_generated.dart';
@@ -25,6 +28,14 @@ Future<void> main() async {
   final handler = await initializeAudioService();
   final repository = await RustPlayerRepository.create(handler);
   final preferences = await SharedPreferences.getInstance();
+  final coverFeedback = CoverFeedbackSettings(
+    hapticStrength: (preferences.getDouble('coverHapticStrength') ?? .7)
+        .clamp(0.0, 1.0)
+        .toDouble(),
+    soundStrength: (preferences.getDouble('coverSoundStrength') ?? .7)
+        .clamp(0.0, 1.0)
+        .toDouble(),
+  );
   runApp(
     LiquidGlassWidgets.wrap(
       respectSystemAccessibility: true,
@@ -37,6 +48,13 @@ Future<void> main() async {
         repository: repository,
         initialDark: preferences.getBool('darkMode') ?? false,
         saveDarkMode: (value) => preferences.setBool('darkMode', value),
+        initialCoverFeedback: coverFeedback,
+        saveCoverFeedback: (value) async {
+          await Future.wait([
+            preferences.setDouble('coverHapticStrength', value.hapticStrength),
+            preferences.setDouble('coverSoundStrength', value.soundStrength),
+          ]);
+        },
       ),
     ),
   );
@@ -48,11 +66,15 @@ class PlayerApp extends StatefulWidget {
     required this.repository,
     this.initialDark = false,
     this.saveDarkMode,
+    this.initialCoverFeedback = CoverFeedbackSettings.defaults,
+    this.saveCoverFeedback,
   });
 
   final PlayerRepository repository;
   final bool initialDark;
   final Future<bool> Function(bool value)? saveDarkMode;
+  final CoverFeedbackSettings initialCoverFeedback;
+  final Future<void> Function(CoverFeedbackSettings value)? saveCoverFeedback;
 
   @override
   State<PlayerApp> createState() => _PlayerAppState();
@@ -62,6 +84,20 @@ class _PlayerAppState extends State<PlayerApp> {
   late ThemeMode _themeMode = widget.initialDark
       ? ThemeMode.dark
       : ThemeMode.light;
+  late CoverFeedbackSettings _coverFeedback = widget.initialCoverFeedback;
+
+  @override
+  void initState() {
+    super.initState();
+    CoverFeedback.configure(_coverFeedback);
+  }
+
+  void _setCoverFeedback(CoverFeedbackSettings value) {
+    setState(() => _coverFeedback = value);
+    CoverFeedback.configure(value);
+    final save = widget.saveCoverFeedback;
+    if (save != null) unawaited(save(value));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +126,7 @@ class _PlayerAppState extends State<PlayerApp> {
                   builder: (_) => SettingsPage(
                     repository: widget.repository,
                     dark: dark,
+                    coverFeedback: _coverFeedback,
                     onThemeChanged: (value) {
                       setState(
                         () => _themeMode = value
@@ -98,6 +135,7 @@ class _PlayerAppState extends State<PlayerApp> {
                       );
                       widget.saveDarkMode?.call(value);
                     },
+                    onCoverFeedbackChanged: _setCoverFeedback,
                   ),
                 ),
               );

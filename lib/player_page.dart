@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'cover_scrubber.dart';
 import 'player.dart';
 import 'services/media_cache.dart';
+import 'services/cover_feedback.dart';
 import 'widgets/glass_player.dart';
 
 const _coverViewportFraction = .16;
@@ -211,7 +212,7 @@ class _PlayerPageState extends State<PlayerPage>
     if (step == null) return;
     final target = (controller.browsedIndex + step).clamp(0, count - 1);
     if (target == controller.browsedIndex) return;
-    controller.browseTo(target);
+    _browseTo(target, feedbackCount: (target - controller.browsedIndex).abs());
     pages.animateToPage(
       target,
       duration: const Duration(milliseconds: 90),
@@ -233,9 +234,13 @@ class _PlayerPageState extends State<PlayerPage>
     setState(() => edgeOverscroll = next);
   }
 
-  void _browseTo(int index) {
+  void _browseTo(int index, {int feedbackCount = 1}) {
+    final changed = controller.browsedIndex != index;
     controller.browseTo(index);
     _retainCover(controller.visible[controller.browsedIndex]);
+    for (var count = 0; changed && count < feedbackCount; count++) {
+      CoverFeedback.playCoverChanged();
+    }
   }
 
   void _setScrubberActive(bool active) {
@@ -283,8 +288,8 @@ class _PlayerPageState extends State<PlayerPage>
       if (!mounted || !pages.hasClients) return;
       await pages.animateToPage(
         target,
-        duration: const Duration(milliseconds: 460),
-        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 329),
+        curve: Curves.easeOutExpo,
       );
       return;
     }
@@ -302,8 +307,8 @@ class _PlayerPageState extends State<PlayerPage>
     }
     await pages.animateToPage(
       path.last,
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutExpo,
     );
   }
 

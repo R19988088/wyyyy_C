@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:wyyyy/main.dart';
 import 'package:wyyyy/player.dart';
+import 'package:wyyyy/services/cover_feedback.dart';
 
 void main() {
   testWidgets('shows library tabs and the three-row player', (tester) async {
@@ -100,6 +102,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('深色模式'), findsOneWidget);
+    expect(find.byKey(const Key('cover-haptic-strength')), findsOneWidget);
+    expect(find.byKey(const Key('cover-sound-strength')), findsOneWidget);
     await tester.tap(find.text('深色模式'));
     await tester.pump();
     expect(
@@ -111,6 +115,35 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('扫码登录'), findsOneWidget);
+  });
+
+  testWidgets('settings sliders persist independent cover feedback strengths', (
+    tester,
+  ) async {
+    final saved = <CoverFeedbackSettings>[];
+    await tester.pumpWidget(
+      PlayerApp(
+        repository: InMemoryPlayerRepository.demo(),
+        saveCoverFeedback: (value) async => saved.add(value),
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+
+    tester
+        .widget<Slider>(find.byKey(const Key('cover-haptic-strength')))
+        .onChanged!(.25);
+    await tester.pump();
+    tester
+        .widget<Slider>(find.byKey(const Key('cover-sound-strength')))
+        .onChanged!(.85);
+    await tester.pump();
+
+    expect(saved, hasLength(2));
+    expect(saved.first.hapticStrength, .25);
+    expect(saved.first.soundStrength, .7);
+    expect(saved.last.hapticStrength, .25);
+    expect(saved.last.soundStrength, .85);
   });
 
   testWidgets('center cover requires a double tap to start playback', (
@@ -250,6 +283,36 @@ void main() {
       tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
+  });
+
+  testWidgets('wheel emits one feedback event for each switched cover', (
+    tester,
+  ) async {
+    const channel = MethodChannel('com.r19988088.wyyyy/cover_feedback');
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    await tester.drag(
+      find.byKey(const Key('cover-scrubber')),
+      const Offset(80, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, hasLength(2));
+    for (final call in calls) {
+      expect(call.method, 'coverChanged');
+    }
   });
 
   testWidgets('hidden wheel stops at both collection boundaries', (

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'player.dart';
+import 'services/cover_feedback.dart';
 import 'services/media_cache.dart';
 import 'src/rust/api.dart' as api;
 import 'src/rust/models.dart' as rust;
@@ -31,11 +32,15 @@ class SettingsPage extends StatefulWidget {
     required this.repository,
     required this.dark,
     required this.onThemeChanged,
+    required this.coverFeedback,
+    required this.onCoverFeedbackChanged,
   });
 
   final PlayerRepository repository;
   final bool dark;
   final ValueChanged<bool> onThemeChanged;
+  final CoverFeedbackSettings coverFeedback;
+  final ValueChanged<CoverFeedbackSettings> onCoverFeedbackChanged;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -43,6 +48,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late bool dark = widget.dark;
+  late CoverFeedbackSettings _coverFeedback = widget.coverFeedback;
   String _cacheSize = '正在计算…';
   bool _clearingCache = false;
   rust.Profile? _profile;
@@ -114,6 +120,38 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() => dark = value);
               widget.onThemeChanged(value);
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.vibration_rounded),
+            title: const Text('转盘震动强度'),
+            subtitle: Slider(
+              key: const Key('cover-haptic-strength'),
+              value: _coverFeedback.hapticStrength,
+              onChanged: (value) {
+                setState(() {
+                  _coverFeedback = _coverFeedback.copyWith(
+                    hapticStrength: value,
+                  );
+                });
+                widget.onCoverFeedbackChanged(_coverFeedback);
+              },
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.volume_up_rounded),
+            title: const Text('转盘咔哒声强度'),
+            subtitle: Slider(
+              key: const Key('cover-sound-strength'),
+              value: _coverFeedback.soundStrength,
+              onChanged: (value) {
+                setState(() {
+                  _coverFeedback = _coverFeedback.copyWith(
+                    soundStrength: value,
+                  );
+                });
+                widget.onCoverFeedbackChanged(_coverFeedback);
+              },
+            ),
           ),
           ListTile(
             leading: _clearingCache
