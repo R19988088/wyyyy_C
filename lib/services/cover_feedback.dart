@@ -27,6 +27,7 @@ class CoverFeedbackSettings {
 
 class CoverFeedback {
   static const _channel = MethodChannel('com.r19988088.wyyyy/cover_feedback');
+  static const _maxSoundStrength = .2;
   static CoverFeedbackSettings _settings = CoverFeedbackSettings.defaults;
 
   static void configure(CoverFeedbackSettings settings) {
@@ -43,7 +44,7 @@ class CoverFeedback {
     try {
       await _channel.invokeMethod<void>('coverChanged', {
         'hapticStrength': settings.hapticStrength,
-        'soundStrength': settings.soundStrength,
+        'soundStrength': settings.soundStrength * _maxSoundStrength,
       });
     } catch (_) {
       // Desktop and widget tests do not provide the Android feedback channel.

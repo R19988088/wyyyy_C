@@ -46,10 +46,10 @@ class MainActivity : AudioServiceActivity() {
         if (!vibrator.hasVibrator()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val amplitude = (hapticStrength * 255).roundToInt().coerceAtLeast(1)
-            vibrator.vibrate(VibrationEffect.createOneShot(14, amplitude))
+            vibrator.vibrate(VibrationEffect.createOneShot(1, amplitude))
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(14)
+            vibrator.vibrate(1)
         }
     }
 }

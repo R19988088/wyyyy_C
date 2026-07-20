@@ -34,10 +34,9 @@ void main() {
 
       expect(calls, hasLength(1));
       expect(calls.single.method, 'coverChanged');
-      expect(calls.single.arguments, {
-        'hapticStrength': .4,
-        'soundStrength': .8,
-      });
+      final arguments = calls.single.arguments as Map<Object?, Object?>;
+      expect(arguments['hapticStrength'], .4);
+      expect(arguments['soundStrength'], closeTo(.16, .0001));
     },
   );
 
