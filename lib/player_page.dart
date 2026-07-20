@@ -53,6 +53,7 @@ class _PlayerPageState extends State<PlayerPage>
   bool listMode = false;
   bool scrubberActive = false;
   bool pageDragActive = false;
+  double edgeOverscroll = 0;
 
   GlobalKey _coverKey(MusicCollection collection) =>
       coverKeys.putIfAbsent(_coverId(collection), GlobalKey.new);
@@ -184,9 +185,29 @@ class _PlayerPageState extends State<PlayerPage>
   }
 
   void _scrubCovers(double delta, Duration timestamp) {
-    final step = scrubSpeed.update(delta: delta, timestamp: timestamp);
-    if (step == null) return;
     final count = controller.visible.length;
+    final last = count - 1;
+    var remaining = delta;
+    if (edgeOverscroll != 0) {
+      final next = edgeOverscroll + remaining;
+      if (edgeOverscroll.sign == next.sign && next != 0) {
+        _setEdgeOverscroll(next);
+        scrubSpeed.reset();
+        return;
+      }
+      remaining = next;
+      _setEdgeOverscroll(0);
+      scrubSpeed.reset();
+    }
+    final atStart = controller.browsedIndex == 0 && remaining < 0;
+    final atEnd = controller.browsedIndex == last && remaining > 0;
+    if (atStart || atEnd) {
+      _setEdgeOverscroll(remaining);
+      scrubSpeed.reset();
+      return;
+    }
+    final step = scrubSpeed.update(delta: remaining, timestamp: timestamp);
+    if (step == null) return;
     final target = (controller.browsedIndex + step).clamp(0, count - 1);
     if (target == controller.browsedIndex) return;
     controller.browseTo(target);
@@ -197,6 +218,20 @@ class _PlayerPageState extends State<PlayerPage>
     );
   }
 
+  void _setEdgeOverscroll(double value) {
+    final coverBox =
+        _coverKey(
+              controller.visible[controller.browsedIndex],
+            ).currentContext?.findRenderObject()
+            as RenderBox?;
+    final fallbackWidth =
+        MediaQuery.sizeOf(context).width * _coverWidthFraction - 16;
+    final limit = math.max(0.0, (coverBox?.size.width ?? fallbackWidth) / 2);
+    final next = value.clamp(-limit, limit);
+    if (next == edgeOverscroll) return;
+    setState(() => edgeOverscroll = next);
+  }
+
   void _browseTo(int index) {
     controller.browseTo(index);
     _retainCover(controller.visible[controller.browsedIndex]);
@@ -204,8 +239,11 @@ class _PlayerPageState extends State<PlayerPage>
 
   void _setScrubberActive(bool active) {
     scrubSpeed.reset();
-    if (scrubberActive == active) return;
-    setState(() => scrubberActive = active);
+    if (scrubberActive == active && (active || edgeOverscroll == 0)) return;
+    setState(() {
+      scrubberActive = active;
+      if (!active) edgeOverscroll = 0;
+    });
   }
 
   void _setPageDragActive(bool active) {
@@ -294,6 +332,9 @@ class _PlayerPageState extends State<PlayerPage>
                             onPageChanged: _browseTo,
                             coverSwitching: pageDragActive,
                             coverPressed: scrubberActive,
+                            edgeOffsetFraction:
+                                edgeOverscroll /
+                                MediaQuery.sizeOf(context).width,
                             onPageDragStart: () => _setPageDragActive(true),
                             onPageDragEnd: () => _setPageDragActive(false),
                             onScrubStart: () => _setScrubberActive(true),
@@ -367,6 +408,7 @@ class _CoverMode extends StatelessWidget {
     required this.onPageChanged,
     required this.coverSwitching,
     required this.coverPressed,
+    required this.edgeOffsetFraction,
     required this.onPageDragStart,
     required this.onPageDragEnd,
     required this.onScrubStart,
@@ -385,6 +427,7 @@ class _CoverMode extends StatelessWidget {
   final ValueChanged<int> onPageChanged;
   final bool coverSwitching;
   final bool coverPressed;
+  final double edgeOffsetFraction;
   final VoidCallback onPageDragStart;
   final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
@@ -425,29 +468,37 @@ class _CoverMode extends StatelessWidget {
                   },
                   child: Opacity(
                     opacity: 1 - progress,
-                    child: AnimatedScale(
-                      key: const Key('cover-switch-scale'),
-                      scale: coverPressed ? .72 : (coverSwitching ? .8 : 1),
-                      duration: Duration(
-                        milliseconds: coverPressed
-                            ? 180
-                            : (coverSwitching ? 110 : 520),
-                      ),
-                      curve: coverPressed
-                          ? Curves.easeOutBack
-                          : (coverSwitching
-                                ? Curves.easeOutCubic
-                                : Curves.elasticOut),
-                      child: _CoverFlow(
-                        controller: controller,
-                        pages: pages,
-                        expandedSides: coverPressed || coverSwitching,
-                        showScrollIndicator: coverPressed || coverSwitching,
-                        coverKeyFor: coverKeyFor,
-                        keepCoverAlive: keepCoverAlive,
-                        onPageChanged: onPageChanged,
-                        onDragStart: onPageDragStart,
-                        onDragEnd: onPageDragEnd,
+                    child: AnimatedSlide(
+                      key: const Key('cover-edge-slide'),
+                      offset: Offset(edgeOffsetFraction, 0),
+                      duration: coverPressed
+                          ? Duration.zero
+                          : const Duration(milliseconds: 300),
+                      curve: Curves.easeOutBack,
+                      child: AnimatedScale(
+                        key: const Key('cover-switch-scale'),
+                        scale: coverPressed ? .72 : (coverSwitching ? .8 : 1),
+                        duration: Duration(
+                          milliseconds: coverPressed
+                              ? 180
+                              : (coverSwitching ? 110 : 520),
+                        ),
+                        curve: coverPressed
+                            ? Curves.easeOutBack
+                            : (coverSwitching
+                                  ? Curves.easeOutCubic
+                                  : Curves.elasticOut),
+                        child: _CoverFlow(
+                          controller: controller,
+                          pages: pages,
+                          expandedSides: coverPressed || coverSwitching,
+                          showScrollIndicator: coverPressed || coverSwitching,
+                          coverKeyFor: coverKeyFor,
+                          keepCoverAlive: keepCoverAlive,
+                          onPageChanged: onPageChanged,
+                          onDragStart: onPageDragStart,
+                          onDragEnd: onPageDragEnd,
+                        ),
                       ),
                     ),
                   ),
@@ -526,7 +577,7 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
         currentRadius >= 24 &&
         tangentialDelta.abs() > radialDelta.abs();
     _circularMoved |= circular;
-    final delta = circular
+    final delta = _circularMoved
         ? tangentialDelta
         : (_sampled ? event.delta.dx : 0.0);
     widget.onUpdate(delta, WidgetsBinding.instance.currentSystemFrameTimeStamp);
@@ -863,8 +914,11 @@ class _CoverScrollIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trackWidth = width * .82;
-    final thumbWidth = math.max(24.0, trackWidth / math.max(count, 1));
+    final trackWidth = width;
+    final thumbWidth = math.max(
+      24.0,
+      trackWidth * math.min(1.0, 3 / math.max(count, 1)),
+    );
     final maxOffset = math.max(0.0, trackWidth - thumbWidth);
     final offset = count <= 1 ? 0.0 : maxOffset * index / (count - 1);
     return AnimatedOpacity(
@@ -872,37 +926,42 @@ class _CoverScrollIndicator extends StatelessWidget {
       duration: Duration(milliseconds: visible ? 150 : 300),
       curve: Curves.easeOut,
       child: SizedBox(
-        key: const Key('cover-scrollbar-track'),
-        width: width,
-        height: 18,
-        child: Center(
-          child: Container(
-            width: trackWidth,
-            height: 12,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Theme.of(
-                  context,
-                ).colorScheme.outline.withValues(alpha: .45),
-              ),
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  left: offset,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: thumbWidth,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+        height: 32,
+        child: OverflowBox(
+          minWidth: width,
+          maxWidth: width,
+          child: SizedBox(
+            width: width,
+            height: 32,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                key: Key('cover-scrollbar-track-$index'),
+                width: trackWidth,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: const Color(0xffd6d4d2),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xffaaa59b)),
                 ),
-              ],
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: offset,
+                      top: 2,
+                      bottom: 2,
+                      child: Container(
+                        key: Key('cover-scrollbar-thumb-$index'),
+                        width: thumbWidth,
+                        decoration: BoxDecoration(
+                          color: const Color(0xff393b3d),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1068,7 +1127,7 @@ class _CoverFlow extends StatelessWidget {
                   builder: (context, constraints) {
                     final scaler = MediaQuery.textScalerOf(context);
                     final captionHeight =
-                        102 + scaler.scale(28) + scaler.scale(18);
+                        86 + scaler.scale(30) + scaler.scale(18);
                     final coverSize = math.max(
                       0.0,
                       math.min(

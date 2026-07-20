@@ -342,6 +342,132 @@ void main() {
     expect(hidden.duration, const Duration(milliseconds: 300));
   });
 
+  testWidgets('wheel scrollbar spans the caption and maps its thumb position', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      8,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final gesture = await tester.startGesture(tester.getCenter(wheel));
+    await tester.pump();
+    final track = tester.getRect(
+      find.byKey(const Key('cover-scrollbar-track-0')),
+    );
+    final thumb = tester.getRect(
+      find.byKey(const Key('cover-scrollbar-thumb-0')),
+    );
+
+    expect(
+      track.width,
+      closeTo(
+        tester.getSize(find.byKey(const Key('cover-caption-0'))).width,
+        1,
+      ),
+    );
+    expect(track.height, 12);
+    expect(thumb.left, closeTo(track.left, 1));
+    expect(thumb.width, closeTo(track.width * 3 / 8, 1));
+    await gesture.up();
+  });
+
+  testWidgets('wheel edge allows half-cover travel and rebounds on release', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final center = tester.getCenter(wheel);
+    const radius = 70.0;
+    Offset point(double angle) =>
+        center + Offset(math.cos(angle), math.sin(angle)) * radius;
+    final gesture = await tester.startGesture(point(0));
+    for (var step = 1; step <= 12; step++) {
+      await gesture.moveTo(point(-step * .35));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    final pressedSlide = tester.widget<AnimatedSlide>(
+      find.byKey(const Key('cover-edge-slide')),
+    );
+    final coverWidth = tester
+        .getSize(find.byKey(const Key('cover-art-0')))
+        .width;
+    expect(pressedSlide.offset.dx, closeTo(-coverWidth / 2 / 400, .01));
+
+    await gesture.up();
+    await tester.pump();
+    final releasedSlide = tester.widget<AnimatedSlide>(
+      find.byKey(const Key('cover-edge-slide')),
+    );
+    expect(releasedSlide.offset.dx, 0);
+    expect(releasedSlide.duration, const Duration(milliseconds: 300));
+  });
+
+  testWidgets('reversing a circular edge gesture can browse inward', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final center = tester.getCenter(wheel);
+    const radius = 70.0;
+    Offset point(double angle, [double radialOffset = 0]) =>
+        center +
+        Offset(math.cos(angle), math.sin(angle)) * (radius + radialOffset);
+    final gesture = await tester.startGesture(point(0));
+    await gesture.moveTo(point(-.35));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(point(-.7));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(point(-.35, 10));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(point(.05));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(point(.4));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    await gesture.up();
+  });
+
   testWidgets('cover caption uses the cover width', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
