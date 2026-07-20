@@ -183,13 +183,11 @@ class _PlayerPageState extends State<PlayerPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
   }
 
-  void _scrubCovers(double delta, Duration timestamp, {required bool cycle}) {
+  void _scrubCovers(double delta, Duration timestamp) {
     final step = scrubSpeed.update(delta: delta, timestamp: timestamp);
     if (step == null) return;
     final count = controller.visible.length;
-    final target = cycle
-        ? ((controller.browsedIndex + step) % count + count) % count
-        : (controller.browsedIndex + step).clamp(0, count - 1);
+    final target = (controller.browsedIndex + step).clamp(0, count - 1);
     if (target == controller.browsedIndex) return;
     controller.browseTo(target);
     pages.animateToPage(
@@ -390,8 +388,7 @@ class _CoverMode extends StatelessWidget {
   final VoidCallback onPageDragStart;
   final VoidCallback onPageDragEnd;
   final VoidCallback onScrubStart;
-  final void Function(double delta, Duration timestamp, {required bool cycle})
-  onScrubUpdate;
+  final void Function(double delta, Duration timestamp) onScrubUpdate;
   final VoidCallback onScrubEnd;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
@@ -445,6 +442,7 @@ class _CoverMode extends StatelessWidget {
                         controller: controller,
                         pages: pages,
                         expandedSides: coverPressed || coverSwitching,
+                        showScrollIndicator: coverPressed || coverSwitching,
                         coverKeyFor: coverKeyFor,
                         keepCoverAlive: keepCoverAlive,
                         onPageChanged: onPageChanged,
@@ -486,8 +484,7 @@ class _CoverWheelRegion extends StatefulWidget {
   });
 
   final VoidCallback onStart;
-  final void Function(double delta, Duration timestamp, {required bool cycle})
-  onUpdate;
+  final void Function(double delta, Duration timestamp) onUpdate;
   final VoidCallback onEnd;
   final Future<void> Function() onVerticalSwipe;
 
@@ -532,11 +529,7 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
     final delta = circular
         ? tangentialDelta
         : (_sampled ? event.delta.dx : 0.0);
-    widget.onUpdate(
-      delta,
-      WidgetsBinding.instance.currentSystemFrameTimeStamp,
-      cycle: circular,
-    );
+    widget.onUpdate(delta, WidgetsBinding.instance.currentSystemFrameTimeStamp);
     _sampled = true;
     _previousPosition = event.localPosition;
   }
@@ -854,11 +847,76 @@ class _CoverTapRegionState extends State<_CoverTapRegion> {
   }
 }
 
+class _CoverScrollIndicator extends StatelessWidget {
+  const _CoverScrollIndicator({
+    super.key,
+    required this.visible,
+    required this.index,
+    required this.count,
+    required this.width,
+  });
+
+  final bool visible;
+  final int index;
+  final int count;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final trackWidth = width * .82;
+    final thumbWidth = math.max(24.0, trackWidth / math.max(count, 1));
+    final maxOffset = math.max(0.0, trackWidth - thumbWidth);
+    final offset = count <= 1 ? 0.0 : maxOffset * index / (count - 1);
+    return AnimatedOpacity(
+      opacity: visible ? 1 : 0,
+      duration: Duration(milliseconds: visible ? 150 : 300),
+      curve: Curves.easeOut,
+      child: SizedBox(
+        key: const Key('cover-scrollbar-track'),
+        width: width,
+        height: 18,
+        child: Center(
+          child: Container(
+            width: trackWidth,
+            height: 12,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: .45),
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: offset,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: thumbWidth,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CoverFlow extends StatelessWidget {
   const _CoverFlow({
     required this.controller,
     required this.pages,
     required this.expandedSides,
+    required this.showScrollIndicator,
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
@@ -869,6 +927,7 @@ class _CoverFlow extends StatelessWidget {
   final PlayerController controller;
   final PageController pages;
   final bool expandedSides;
+  final bool showScrollIndicator;
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
@@ -1009,7 +1068,7 @@ class _CoverFlow extends StatelessWidget {
                   builder: (context, constraints) {
                     final scaler = MediaQuery.textScalerOf(context);
                     final captionHeight =
-                        78 + scaler.scale(28) + scaler.scale(18);
+                        102 + scaler.scale(28) + scaler.scale(18);
                     final coverSize = math.max(
                       0.0,
                       math.min(
@@ -1145,7 +1204,16 @@ class _CoverFlow extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 56),
+                            _CoverScrollIndicator(
+                              key: Key('cover-scrollbar-$index'),
+                              visible:
+                                  showScrollIndicator &&
+                                  index == controller.browsedIndex,
+                              index: index,
+                              count: controller.visible.length,
+                              width: coverSize,
+                            ),
+                            const SizedBox(height: 36),
                           ],
                         ),
                       ),

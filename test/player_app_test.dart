@@ -252,7 +252,7 @@ void main() {
     );
   });
 
-  testWidgets('hidden wheel continuously cycles covers in both directions', (
+  testWidgets('hidden wheel stops at both collection boundaries', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -299,9 +299,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
+  });
+
+  testWidgets('wheel scrollbar fades with the requested timings', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-wheel'))),
+    );
+    await tester.pump();
+    final visible = tester.widget<AnimatedOpacity>(
+      find.descendant(
+        of: find.byKey(const Key('cover-scrollbar-0')),
+        matching: find.byType(AnimatedOpacity),
+      ),
+    );
+    expect(visible.opacity, 1);
+    expect(visible.duration, const Duration(milliseconds: 150));
+
+    await gesture.up();
+    await tester.pump();
+    final hidden = tester.widget<AnimatedOpacity>(
+      find.descendant(
+        of: find.byKey(const Key('cover-scrollbar-0')),
+        matching: find.byType(AnimatedOpacity),
+      ),
+    );
+    expect(hidden.opacity, 0);
+    expect(hidden.duration, const Duration(milliseconds: 300));
   });
 
   testWidgets('cover caption uses the cover width', (tester) async {
