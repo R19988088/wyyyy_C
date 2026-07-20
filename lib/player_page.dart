@@ -226,7 +226,7 @@ class _PlayerPageState extends State<PlayerPage>
             as RenderBox?;
     final fallbackWidth =
         MediaQuery.sizeOf(context).width * _coverWidthFraction - 16;
-    final limit = math.max(0.0, (coverBox?.size.width ?? fallbackWidth) / 2);
+    final limit = math.max(0.0, (coverBox?.size.width ?? fallbackWidth) * .15);
     final next = value.clamp(-limit, limit);
     if (next == edgeOverscroll) return;
     setState(() => edgeOverscroll = next);
@@ -492,7 +492,6 @@ class _CoverMode extends StatelessWidget {
                           controller: controller,
                           pages: pages,
                           expandedSides: coverPressed || coverSwitching,
-                          showScrollIndicator: coverPressed || coverSwitching,
                           coverKeyFor: coverKeyFor,
                           keepCoverAlive: keepCoverAlive,
                           onPageChanged: onPageChanged,
@@ -500,6 +499,49 @@ class _CoverMode extends StatelessWidget {
                           onDragEnd: onPageDragEnd,
                         ),
                       ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final scaler = MediaQuery.textScalerOf(context);
+                        final textHeight = scaler.scale(30) + scaler.scale(18);
+                        final captionHeight = 86 + textHeight;
+                        final coverSize = math.max(
+                          0.0,
+                          math.min(
+                            MediaQuery.sizeOf(context).width *
+                                    _coverWidthFraction -
+                                16,
+                            constraints.maxHeight - 180 - captionHeight,
+                          ),
+                        );
+                        final contentHeight =
+                            coverSize + 18 + textHeight + 32 + 36;
+                        final indicatorTop =
+                            (constraints.maxHeight - 180 - contentHeight) / 2 +
+                            coverSize +
+                            18 +
+                            textHeight;
+                        return Stack(
+                          children: [
+                            Positioned(
+                              left: (constraints.maxWidth - coverSize) / 2,
+                              top: indicatorTop,
+                              width: coverSize,
+                              child: _CoverScrollIndicator(
+                                key: const Key('cover-scrollbar'),
+                                visible: coverPressed || coverSwitching,
+                                index: controller.browsedIndex,
+                                count: controller.visible.length,
+                                width: coverSize,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -936,7 +978,7 @@ class _CoverScrollIndicator extends StatelessWidget {
             child: Align(
               alignment: Alignment.bottomCenter,
               child: Container(
-                key: Key('cover-scrollbar-track-$index'),
+                key: const Key('cover-scrollbar-track'),
                 width: trackWidth,
                 height: 12,
                 decoration: BoxDecoration(
@@ -951,7 +993,7 @@ class _CoverScrollIndicator extends StatelessWidget {
                       top: 2,
                       bottom: 2,
                       child: Container(
-                        key: Key('cover-scrollbar-thumb-$index'),
+                        key: const Key('cover-scrollbar-thumb'),
                         width: thumbWidth,
                         decoration: BoxDecoration(
                           color: const Color(0xff393b3d),
@@ -975,7 +1017,6 @@ class _CoverFlow extends StatelessWidget {
     required this.controller,
     required this.pages,
     required this.expandedSides,
-    required this.showScrollIndicator,
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
@@ -986,7 +1027,6 @@ class _CoverFlow extends StatelessWidget {
   final PlayerController controller;
   final PageController pages;
   final bool expandedSides;
-  final bool showScrollIndicator;
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
@@ -1263,15 +1303,7 @@ class _CoverFlow extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _CoverScrollIndicator(
-                              key: Key('cover-scrollbar-$index'),
-                              visible:
-                                  showScrollIndicator &&
-                                  index == controller.browsedIndex,
-                              index: index,
-                              count: controller.visible.length,
-                              width: coverSize,
-                            ),
+                            const SizedBox(height: 32),
                             const SizedBox(height: 36),
                           ],
                         ),

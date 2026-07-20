@@ -323,7 +323,7 @@ void main() {
     await tester.pump();
     final visible = tester.widget<AnimatedOpacity>(
       find.descendant(
-        of: find.byKey(const Key('cover-scrollbar-0')),
+        of: find.byKey(const Key('cover-scrollbar')),
         matching: find.byType(AnimatedOpacity),
       ),
     );
@@ -334,7 +334,7 @@ void main() {
     await tester.pump();
     final hidden = tester.widget<AnimatedOpacity>(
       find.descendant(
-        of: find.byKey(const Key('cover-scrollbar-0')),
+        of: find.byKey(const Key('cover-scrollbar')),
         matching: find.byType(AnimatedOpacity),
       ),
     );
@@ -370,10 +370,10 @@ void main() {
     final gesture = await tester.startGesture(tester.getCenter(wheel));
     await tester.pump();
     final track = tester.getRect(
-      find.byKey(const Key('cover-scrollbar-track-0')),
+      find.byKey(const Key('cover-scrollbar-track')),
     );
     final thumb = tester.getRect(
-      find.byKey(const Key('cover-scrollbar-thumb-0')),
+      find.byKey(const Key('cover-scrollbar-thumb')),
     );
 
     expect(
@@ -389,7 +389,7 @@ void main() {
     await gesture.up();
   });
 
-  testWidgets('wheel edge allows half-cover travel and rebounds on release', (
+  testWidgets('wheel edge allows 15 percent travel and rebounds on release', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -419,7 +419,7 @@ void main() {
     final coverWidth = tester
         .getSize(find.byKey(const Key('cover-art-0')))
         .width;
-    expect(pressedSlide.offset.dx, closeTo(-coverWidth / 2 / 400, .01));
+    expect(pressedSlide.offset.dx, closeTo(-coverWidth * .15 / 400, .01));
 
     await gesture.up();
     await tester.pump();
@@ -428,6 +428,31 @@ void main() {
     );
     expect(releasedSlide.offset.dx, 0);
     expect(releasedSlide.duration, const Duration(milliseconds: 300));
+  });
+
+  testWidgets('wheel scrollbar stays fixed while the cover moves', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final track = find.byKey(const Key('cover-scrollbar-track'));
+    final initialRect = tester.getRect(track);
+    final wheel = find.byKey(const Key('cover-wheel'));
+    final center = tester.getCenter(wheel);
+    final gesture = await tester.startGesture(center + const Offset(70, 0));
+    await gesture.moveTo(center + const Offset(65, -35));
+    await tester.pump(const Duration(milliseconds: 180));
+
+    expect(tester.getRect(track), initialRect);
+    await gesture.up();
   });
 
   testWidgets('reversing a circular edge gesture can browse inward', (
