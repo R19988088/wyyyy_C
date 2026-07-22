@@ -559,7 +559,7 @@ void main() {
     final lowerRowRect = tester.getRect(
       find.byKey(const Key('album-switch-row-4')),
     );
-    expect(lowerRowRect.top, greaterThanOrEqualTo(listRect.bottom));
+    expect(lowerRowRect.bottom, lessThanOrEqualTo(listRect.bottom));
     await tester.pump(const Duration(milliseconds: 180));
     await tester.pumpAndSettle();
 
@@ -789,6 +789,39 @@ void main() {
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
     expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
   });
+
+  testWidgets(
+    'double tapping player cover or title returns to the active cover',
+    (tester) async {
+      await tester.pumpWidget(
+        PlayerApp(repository: InMemoryPlayerRepository.demo()),
+      );
+      final browse = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('cover-art-0'))),
+      );
+      await browse.moveBy(const Offset(0, -24));
+      await tester.pump(const Duration(milliseconds: 100));
+      await browse.moveBy(const Offset(0, -24));
+      await tester.pump(const Duration(milliseconds: 100));
+      await browse.up();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('album-switch-selected-1')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('player-mini-cover')));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.byKey(const Key('player-mini-cover')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('album-switch-list')), findsNothing);
+      expect(
+        tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+        closeTo(
+          tester.getCenter(find.byKey(const Key('player-content'))).dx,
+          1,
+        ),
+      );
+    },
+  );
 
   testWidgets('vertical-first gestures do not toggle cover and track list', (
     tester,

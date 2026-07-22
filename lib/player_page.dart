@@ -266,6 +266,7 @@ class _PlayerPageState extends State<PlayerPage>
   }
 
   Future<void> _returnToPlaying() async {
+    if (albumListOpen) _dismissAlbumList();
     final targetKind = controller.activeKind;
     if (controller.kind != targetKind) {
       controller.selectKind(targetKind);
@@ -1000,34 +1001,17 @@ class _AlbumSwitchList extends StatelessWidget {
                     ),
                   ),
                   for (var index = first; index <= last; index++)
-                    TweenAnimationBuilder<double>(
-                      key: ValueKey('album-switch-entry-$index'),
-                      tween: Tween(begin: 0, end: 1),
-                      duration: const Duration(milliseconds: 180),
+                    AnimatedPositioned(
+                      key: Key('album-switch-position-$index'),
+                      left: 0,
+                      right: 0,
+                      top:
+                          center -
+                          rowExtent / 2 +
+                          (index - selectedIndex) * rowExtent,
+                      height: rowExtent,
+                      duration: const Duration(milliseconds: 90),
                       curve: Curves.easeOut,
-                      builder: (context, entry, child) {
-                        final entryDistance =
-                            constraints.maxHeight / 2 + rowExtent;
-                        final entryOffset = index < selectedIndex
-                            ? -entryDistance * (1 - entry)
-                            : index > selectedIndex
-                            ? entryDistance * (1 - entry)
-                            : 0.0;
-                        return AnimatedPositioned(
-                          key: Key('album-switch-position-$index'),
-                          left: 0,
-                          right: 0,
-                          top:
-                              center -
-                              rowExtent / 2 +
-                              (index - selectedIndex) * rowExtent +
-                              entryOffset,
-                          height: rowExtent,
-                          duration: const Duration(milliseconds: 90),
-                          curve: Curves.easeOut,
-                          child: child!,
-                        );
-                      },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: DecoratedBox(
