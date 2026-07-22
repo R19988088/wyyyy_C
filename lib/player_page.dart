@@ -54,7 +54,6 @@ class _PlayerPageState extends State<PlayerPage>
   bool listMode = false;
   bool scrubberActive = false;
   bool pageDragActive = false;
-  bool coverPullActive = false;
   double edgeOverscroll = 0;
 
   GlobalKey _coverKey(MusicCollection collection) =>
@@ -257,12 +256,6 @@ class _PlayerPageState extends State<PlayerPage>
     setState(() => pageDragActive = active);
   }
 
-  bool _consumeCoverPullActive() {
-    final active = coverPullActive;
-    coverPullActive = false;
-    return active;
-  }
-
   Future<void> _returnToPlaying() async {
     final targetKind = controller.activeKind;
     if (controller.kind != targetKind) {
@@ -352,9 +345,6 @@ class _PlayerPageState extends State<PlayerPage>
                             onScrubStart: () => _setScrubberActive(true),
                             onScrubUpdate: _scrubCovers,
                             onScrubEnd: () => _setScrubberActive(false),
-                            onPullDragStart: (active) =>
-                                coverPullActive = active && !scrubberActive,
-                            consumePullDrag: _consumeCoverPullActive,
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -429,8 +419,6 @@ class _CoverMode extends StatelessWidget {
     required this.onScrubStart,
     required this.onScrubUpdate,
     required this.onScrubEnd,
-    required this.onPullDragStart,
-    required this.consumePullDrag,
     required this.progress,
     required this.onSelected,
     required this.openSettings,
@@ -450,8 +438,6 @@ class _CoverMode extends StatelessWidget {
   final VoidCallback onScrubStart;
   final void Function(double delta, Duration timestamp) onScrubUpdate;
   final VoidCallback onScrubEnd;
-  final ValueChanged<bool> onPullDragStart;
-  final bool Function() consumePullDrag;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
   final Future<void> Function() openSettings;
@@ -462,17 +448,6 @@ class _CoverMode extends StatelessWidget {
     final screenSize = MediaQuery.sizeOf(context);
     final wheelExpanded = screenSize.height >= 700;
     final wheelSide = math.max(24.0, (screenSize.width - 220) / 2);
-    final safeArea = MediaQuery.paddingOf(context);
-    final pullAreaBottom = math.max(
-      28.0,
-      screenSize.height - safeArea.vertical - 68 - screenSize.height * .24,
-    );
-    final pullArea = Rect.fromLTRB(
-      screenSize.width * .06,
-      28,
-      screenSize.width * .94,
-      pullAreaBottom,
-    );
     final showingSwitchList = coverPressed;
     return IgnorePointer(
       ignoring: progress > 0,
@@ -491,18 +466,13 @@ class _CoverMode extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 GestureDetector(
-                  onVerticalDragStart: (details) {
-                    onPullDragStart(pullArea.contains(details.localPosition));
-                  },
-                  onVerticalDragEnd: (details) {
-                    final startedInPullArea = consumePullDrag();
-                    if (details.primaryVelocity != null &&
-                        details.primaryVelocity != 0 &&
-                        startedInPullArea) {
-                      openList();
-                    }
-                  },
-                  onVerticalDragCancel: () => consumePullDrag(),
+                  onVerticalDragStart: (_) => onScrubStart(),
+                  onVerticalDragUpdate: (details) => onScrubUpdate(
+                    -details.delta.dy,
+                    WidgetsBinding.instance.currentSystemFrameTimeStamp,
+                  ),
+                  onVerticalDragEnd: (_) => onScrubEnd(),
+                  onVerticalDragCancel: onScrubEnd,
                   child: Opacity(
                     opacity: 1 - progress,
                     child: AnimatedSlide(

@@ -822,6 +822,75 @@ void main() {
     },
   );
 
+  testWidgets('vertical cover drag browses albums without playing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final repository = InMemoryPlayerRepository(const [
+      MusicCollection('0', 'Collection 0', 'Owner 0', LibraryKind.album, [
+        Track('track-0', 'Track 0', 'Artist 0'),
+      ]),
+      MusicCollection('1', 'Collection 1', 'Owner 1', LibraryKind.album, [
+        Track('track-1', 'Track 1', 'Artist 1'),
+      ]),
+      MusicCollection('2', 'Collection 2', 'Owner 2', LibraryKind.album, [
+        Track('track-2', 'Track 2', 'Artist 2'),
+      ]),
+    ]);
+    await tester.pumpWidget(PlayerApp(repository: repository));
+
+    final upward = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await upward.moveBy(const Offset(0, -24));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+    await upward.moveBy(const Offset(0, -24));
+    await tester.pump(const Duration(milliseconds: 100));
+    await upward.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-metadata')),
+        matching: find.text('Track 0'),
+      ),
+      findsOneWidget,
+    );
+
+    final downward = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))),
+    );
+    await downward.moveBy(const Offset(0, 24));
+    await tester.pump(const Duration(milliseconds: 100));
+    await downward.moveBy(const Offset(0, 24));
+    await tester.pump(const Duration(milliseconds: 100));
+    await downward.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-metadata')),
+        matching: find.text('Track 0'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('direct cover drag restores scale as soon as the finger lifts', (
     tester,
   ) async {
