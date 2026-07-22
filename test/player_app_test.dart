@@ -1092,6 +1092,57 @@ void main() {
     expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
   });
 
+  testWidgets(
+    'list switching returns to the cover after a vertical wheel swipe',
+    (tester) async {
+      await tester.pumpWidget(
+        PlayerApp(
+          repository: InMemoryPlayerRepository.demo(),
+          initialListCoverSwitching: true,
+        ),
+      );
+
+      await tester.fling(
+        find.byKey(const Key('cover-scrubber')),
+        const Offset(0, -400),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('album-switch-list')), findsNothing);
+      expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+      expect(find.byKey(const ValueKey('covers')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('player-metadata')),
+          matching: find.text('晴天'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('cancelling list switching returns to the cover', (tester) async {
+    await tester.pumpWidget(
+      PlayerApp(
+        repository: InMemoryPlayerRepository.demo(),
+        initialListCoverSwitching: true,
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+    expect(find.byKey(const ValueKey('covers')), findsOneWidget);
+  });
+
   testWidgets('downward swipe also opens the track list', (tester) async {
     await tester.pumpWidget(
       PlayerApp(repository: InMemoryPlayerRepository.demo()),

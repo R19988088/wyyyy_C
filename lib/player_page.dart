@@ -356,7 +356,7 @@ class _PlayerPageState extends State<PlayerPage>
                             onScrubUpdate: _scrubCovers,
                             onScrubEnd: () => _setScrubberActive(false),
                             onPullDragStart: (active) =>
-                                coverPullActive = active,
+                                coverPullActive = active && !scrubberActive,
                             consumePullDrag: _consumeCoverPullActive,
                             progress: progress,
                             onSelected: _selectKind,
@@ -614,7 +614,9 @@ class _CoverMode extends StatelessWidget {
                     onStart: onScrubStart,
                     onUpdate: onScrubUpdate,
                     onEnd: onScrubEnd,
-                    onVerticalSwipe: openList,
+                    onVerticalSwipe: listCoverSwitching
+                        ? () async {}
+                        : openList,
                   ),
                 ),
               ],
