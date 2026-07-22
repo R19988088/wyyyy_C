@@ -514,11 +514,15 @@ class _CoverMode extends StatelessWidget {
                   right: wheelSide,
                   bottom: wheelExpanded ? 156 : 180,
                   height: wheelExpanded ? 176 : 56,
-                  child: _CoverWheelRegion(
-                    key: const Key('cover-wheel'),
-                    onStart: onScrubStart,
-                    onEnd: onScrubEnd,
-                    onCancel: onScrubCancel,
+                  child: IgnorePointer(
+                    key: const Key('cover-wheel-input'),
+                    ignoring: showingSwitchList,
+                    child: _CoverWheelRegion(
+                      key: const Key('cover-wheel'),
+                      onStart: onScrubStart,
+                      onEnd: onScrubEnd,
+                      onCancel: onScrubCancel,
+                    ),
                   ),
                 ),
               ],

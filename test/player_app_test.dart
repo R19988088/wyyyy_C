@@ -429,6 +429,68 @@ void main() {
     expect(calls.where((call) => call.method == 'coverChanged').length, 2);
   });
 
+  testWidgets('album list text area scrolls in both directions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      12,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner $index',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+    final open = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await open.moveBy(const Offset(0, -24));
+    await open.up();
+    await tester.pumpAndSettle();
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const Key('album-switch-scroll')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    final coveredTitle = find.byKey(const Key('album-switch-title-6'));
+    expect(
+      tester
+          .getRect(coveredTitle)
+          .overlaps(tester.getRect(find.byKey(const Key('cover-wheel')))),
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<IgnorePointer>(find.byKey(const Key('cover-wheel-input')))
+          .ignoring,
+      isTrue,
+    );
+
+    await tester.drag(coveredTitle, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    final afterUpwardDrag = scrollable.position.pixels;
+    expect(afterUpwardDrag, greaterThan(0));
+
+    await tester.drag(
+      find.byKey(const Key('album-switch-title-7')),
+      const Offset(0, 80),
+    );
+    await tester.pumpAndSettle();
+    expect(scrollable.position.pixels, lessThan(afterUpwardDrag));
+  });
+
   testWidgets('album switch list extends beneath the glass player', (
     tester,
   ) async {
