@@ -671,6 +671,134 @@ void main() {
     expect(restoredSpacing, closeTo(normalSpacing, 1));
   });
 
+  testWidgets(
+    'list switching centers the selected album while the wheel is held',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      const tracks = [Track('track', 'Track', 'Artist')];
+      final collections = List.generate(
+        7,
+        (index) => MusicCollection(
+          '$index',
+          'Collection $index',
+          'Owner $index',
+          LibraryKind.album,
+          tracks,
+        ),
+      );
+      await tester.pumpWidget(
+        PlayerApp(
+          repository: InMemoryPlayerRepository(collections),
+          initialListCoverSwitching: true,
+        ),
+      );
+      expect(find.byKey(const Key('album-switch-list')), findsNothing);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+      );
+      await tester.pump();
+
+      final list = find.byKey(const Key('album-switch-list'));
+      final selected = find.byKey(const Key('album-switch-selected-0'));
+      final selectionBand = find.byKey(
+        const Key('album-switch-selection-band'),
+      );
+      expect(list, findsOneWidget);
+      expect(
+        tester.getCenter(selected).dy,
+        closeTo(tester.getCenter(list).dy, 1),
+      );
+      expect(
+        tester.getCenter(selectionBand).dy,
+        closeTo(tester.getCenter(list).dy, 1),
+      );
+      expect(
+        (tester.widget<DecoratedBox>(selectionBand).decoration as BoxDecoration)
+            .color,
+        Theme.of(tester.element(list)).colorScheme.inverseSurface,
+      );
+      expect(
+        tester.getCenter(find.byKey(const Key('album-switch-cover-0'))).dx,
+        lessThan(
+          tester.getCenter(find.byKey(const Key('album-switch-title-0'))).dx,
+        ),
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'list switching browses vertically and returns to the cover without playing',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final repository = InMemoryPlayerRepository(const [
+        MusicCollection('0', 'Collection 0', 'Owner 0', LibraryKind.album, [
+          Track('track-0', 'Track 0', 'Artist 0'),
+        ]),
+        MusicCollection('1', 'Collection 1', 'Owner 1', LibraryKind.album, [
+          Track('track-1', 'Track 1', 'Artist 1'),
+        ]),
+        MusicCollection('2', 'Collection 2', 'Owner 2', LibraryKind.album, [
+          Track('track-2', 'Track 2', 'Artist 2'),
+        ]),
+      ]);
+      await tester.pumpWidget(
+        PlayerApp(repository: repository, initialListCoverSwitching: true),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+      );
+      await gesture.moveBy(const Offset(1, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final list = find.byKey(const Key('album-switch-list'));
+      expect(
+        tester.getCenter(find.byKey(const Key('album-switch-selected-2'))).dy,
+        closeTo(tester.getCenter(list).dy, 1),
+      );
+      expect(
+        tester.getCenter(find.byKey(const Key('album-switch-row-0'))).dy,
+        lessThan(tester.getCenter(list).dy),
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(list, findsNothing);
+      expect(
+        tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
+        closeTo(
+          tester.getCenter(find.byKey(const Key('player-content'))).dx,
+          1,
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('player-metadata')),
+          matching: find.text('Track 0'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('direct cover drag restores scale as soon as the finger lifts', (
     tester,
   ) async {

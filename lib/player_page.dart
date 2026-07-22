@@ -341,6 +341,7 @@ class _PlayerPageState extends State<PlayerPage>
                           _CoverMode(
                             controller: controller,
                             pages: pages,
+                            listCoverSwitching: widget.listCoverSwitching,
                             coverKeyFor: _coverKey,
                             keepCoverAlive: _keepCoverAlive,
                             onPageChanged: _browseTo,
@@ -420,6 +421,7 @@ class _CoverMode extends StatelessWidget {
   const _CoverMode({
     required this.controller,
     required this.pages,
+    required this.listCoverSwitching,
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
@@ -441,6 +443,7 @@ class _CoverMode extends StatelessWidget {
 
   final PlayerController controller;
   final PageController pages;
+  final bool listCoverSwitching;
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
@@ -475,6 +478,7 @@ class _CoverMode extends StatelessWidget {
       screenSize.width * .94,
       pullAreaBottom,
     );
+    final showingSwitchList = listCoverSwitching && coverPressed;
     return IgnorePointer(
       ignoring: progress > 0,
       child: Column(
@@ -515,7 +519,9 @@ class _CoverMode extends StatelessWidget {
                       curve: Curves.easeOutBack,
                       child: AnimatedScale(
                         key: const Key('cover-switch-scale'),
-                        scale: coverPressed ? .72 : (coverSwitching ? .8 : 1),
+                        scale: showingSwitchList
+                            ? 1
+                            : (coverPressed ? .72 : (coverSwitching ? .8 : 1)),
                         duration: Duration(
                           milliseconds: coverPressed
                               ? 180
@@ -526,15 +532,28 @@ class _CoverMode extends StatelessWidget {
                             : (coverSwitching
                                   ? Curves.easeOutCubic
                                   : Curves.elasticOut),
-                        child: _CoverFlow(
-                          controller: controller,
-                          pages: pages,
-                          expandedSides: coverPressed || coverSwitching,
-                          coverKeyFor: coverKeyFor,
-                          keepCoverAlive: keepCoverAlive,
-                          onPageChanged: onPageChanged,
-                          onDragStart: onPageDragStart,
-                          onDragEnd: onPageDragEnd,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            IgnorePointer(
+                              ignoring: showingSwitchList,
+                              child: Opacity(
+                                opacity: showingSwitchList ? 0 : 1,
+                                child: _CoverFlow(
+                                  controller: controller,
+                                  pages: pages,
+                                  expandedSides: coverPressed || coverSwitching,
+                                  coverKeyFor: coverKeyFor,
+                                  keepCoverAlive: keepCoverAlive,
+                                  onPageChanged: onPageChanged,
+                                  onDragStart: onPageDragStart,
+                                  onDragEnd: onPageDragEnd,
+                                ),
+                              ),
+                            ),
+                            if (showingSwitchList)
+                              _AlbumSwitchList(controller: controller),
+                          ],
                         ),
                       ),
                     ),
@@ -571,7 +590,9 @@ class _CoverMode extends StatelessWidget {
                               width: coverSize,
                               child: _CoverScrollIndicator(
                                 key: const Key('cover-scrollbar'),
-                                visible: coverPressed || coverSwitching,
+                                visible:
+                                    !showingSwitchList &&
+                                    (coverPressed || coverSwitching),
                                 index: controller.browsedIndex,
                                 count: controller.visible.length,
                                 width: coverSize,
@@ -1046,6 +1067,168 @@ class _CoverScrollIndicator extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AlbumSwitchList extends StatelessWidget {
+  const _AlbumSwitchList({required this.controller});
+
+  static const rowExtent = 76.0;
+
+  final PlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = controller.browsedIndex;
+    final first = math.max(0, selectedIndex - 4);
+    final last = math.min(controller.visible.length - 1, selectedIndex + 4);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 180),
+      child: ClipRect(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final center = constraints.maxHeight / 2;
+            return Stack(
+              key: const Key('album-switch-list'),
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: center - rowExtent / 2 + 4,
+                  height: rowExtent - 8,
+                  child: DecoratedBox(
+                    key: const Key('album-switch-selection-band'),
+                    decoration: BoxDecoration(
+                      color: scheme.inverseSurface,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ),
+                for (var index = first; index <= last; index++)
+                  AnimatedPositioned(
+                    key: Key('album-switch-position-$index'),
+                    left: 0,
+                    right: 0,
+                    top:
+                        center -
+                        rowExtent / 2 +
+                        (index - selectedIndex) * rowExtent,
+                    height: rowExtent,
+                    duration: const Duration(milliseconds: 90),
+                    curve: Curves.easeOut,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: DecoratedBox(
+                        key: index == selectedIndex
+                            ? Key('album-switch-selected-$index')
+                            : null,
+                        decoration: const BoxDecoration(
+                          color: Colors.transparent,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            key: Key('album-switch-row-$index'),
+                            children: [
+                              SizedBox.square(
+                                key: Key('album-switch-cover-$index'),
+                                dimension: 52,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: _AlbumSwitchCover(
+                                    collection: controller.visible[index],
+                                    fallbackColor: _fallbackCoverColor(index),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      controller.visible[index].title,
+                                      key: Key('album-switch-title-$index'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: index == selectedIndex
+                                                ? scheme.onInverseSurface
+                                                : scheme.onSurface,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      controller.visible[index].subtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: index == selectedIndex
+                                                ? scheme.onInverseSurface
+                                                      .withValues(alpha: .72)
+                                                : scheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AlbumSwitchCover extends StatelessWidget {
+  const _AlbumSwitchCover({
+    required this.collection,
+    required this.fallbackColor,
+  });
+
+  final MusicCollection collection;
+  final Color fallbackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    if (collection.coverUrl.isEmpty) {
+      return ColoredBox(
+        color: fallbackColor,
+        child: const Icon(
+          Icons.graphic_eq_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: collection.coverUrl,
+      httpHeaders: neteaseImageHeaders,
+      cacheManager: PersistentCoverCache.instance,
+      memCacheWidth: math.min(
+        256,
+        (52 * MediaQuery.devicePixelRatioOf(context)).ceil(),
+      ),
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      fit: BoxFit.cover,
     );
   }
 }
