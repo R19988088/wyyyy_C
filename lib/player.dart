@@ -54,7 +54,7 @@ abstract interface class PlaybackRepository implements PlayerRepository {
   Future<void> loadTracks(MusicCollection collection);
   Future<int> activate(
     MusicCollection collection, {
-    int trackIndex = 0,
+    int? trackIndex,
     bool autoplay = true,
   });
   Future<int> previous();
@@ -235,7 +235,7 @@ class PlayerController extends ChangeNotifier {
     final collection = _visible[index];
     final playbackRepository = repository;
     if (playbackRepository is PlaybackRepository) {
-      unawaited(_activate(playbackRepository, collection, 0));
+      unawaited(_activate(playbackRepository, collection, null));
     } else {
       _commitActivation(collection, index, 0, true);
     }
@@ -269,7 +269,7 @@ class PlayerController extends ChangeNotifier {
   Future<void> _activate(
     PlaybackRepository playbackRepository,
     MusicCollection collection,
-    int requestedTrackIndex,
+    int? requestedTrackIndex,
   ) async {
     final generation = ++_activationGeneration;
     try {

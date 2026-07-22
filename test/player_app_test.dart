@@ -278,136 +278,35 @@ void main() {
     }
   });
 
-  testWidgets('hidden scrubber uses a fast vertical drag to cross covers', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
+  testWidgets(
+    'wheel waits for a clear vertical angle before opening the list',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(
+        PlayerApp(repository: InMemoryPlayerRepository.demo()),
+      );
 
-    await tester.drag(
-      find.byKey(const Key('cover-scrubber')),
-      const Offset(0, -80),
-    );
-    await tester.pumpAndSettle();
+      final wheel = find.byKey(const Key('cover-wheel'));
+      final ambiguous = await tester.startGesture(tester.getCenter(wheel));
+      await ambiguous.moveBy(const Offset(30, -25));
+      await ambiguous.up();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('album-switch-list')), findsNothing);
 
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-  });
+      final vertical = await tester.startGesture(tester.getCenter(wheel));
+      await vertical.moveBy(const Offset(10, -30));
+      await vertical.up();
+      await tester.pumpAndSettle();
 
-  testWidgets('wheel emits one feedback event for each switched cover', (
-    tester,
-  ) async {
-    const channel = MethodChannel('com.r19988088.wyyyy/cover_feedback');
-    final calls = <MethodCall>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          calls.add(call);
-          return null;
-        });
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, null);
-    });
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    await tester.drag(
-      find.byKey(const Key('cover-scrubber')),
-      const Offset(0, -80),
-    );
-    await tester.pumpAndSettle();
-
-    expect(calls, hasLength(2));
-    for (final call in calls) {
-      expect(call.method, 'coverChanged');
-    }
-  });
-
-  testWidgets('hidden wheel stops at both collection boundaries', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(400, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    final wheel = find.byKey(const Key('cover-wheel'));
-    final upward = await tester.startGesture(tester.getCenter(wheel));
-    await upward.moveBy(const Offset(0, -24));
-    await tester.pump(const Duration(milliseconds: 100));
-    await upward.moveBy(const Offset(0, -24));
-    await tester.pump(const Duration(milliseconds: 100));
-    await upward.moveBy(const Offset(0, -24));
-    await tester.pump(const Duration(milliseconds: 100));
-    await upward.up();
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-
-    final downward = await tester.startGesture(tester.getCenter(wheel));
-    for (var index = 0; index < 3; index++) {
-      await downward.moveBy(const Offset(0, 24));
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await downward.up();
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-  });
-
-  testWidgets('wheel uses 45 degrees to distinguish vertical and horizontal', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(400, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    final wheel = find.byKey(const Key('cover-wheel'));
-    final vertical = await tester.startGesture(tester.getCenter(wheel));
-    await vertical.moveBy(const Offset(24, -25));
-    await tester.pump(const Duration(milliseconds: 100));
-    await vertical.moveBy(const Offset(0, -25));
-    await tester.pump(const Duration(milliseconds: 100));
-    await vertical.up();
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-
-    final horizontal = await tester.startGesture(tester.getCenter(wheel));
-    await horizontal.moveBy(const Offset(25, -24));
-    await tester.pump(const Duration(milliseconds: 100));
-    await horizontal.up();
-    await tester.pumpAndSettle();
-
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-  });
+      expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+      expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+    },
+  );
 
   testWidgets('cover caption uses the cover width', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -427,7 +326,7 @@ void main() {
   });
 
   testWidgets(
-    'list switching centers the selected album while the wheel is held',
+    'album switch list scrolls freely without a fixed center selection',
     (tester) async {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1;
@@ -458,10 +357,6 @@ void main() {
       await tester.pump();
 
       final list = find.byKey(const Key('album-switch-list'));
-      final selected = find.byKey(const Key('album-switch-selected-0'));
-      final selectionBand = find.byKey(
-        const Key('album-switch-selection-band'),
-      );
       expect(list, findsOneWidget);
       expect(
         find.byKey(const Key('cover-flow-fold-transition')),
@@ -472,18 +367,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        tester.getCenter(selected).dy,
-        closeTo(tester.getCenter(list).dy, 1),
+        find.byKey(const Key('album-switch-selection-band')),
+        findsNothing,
       );
-      expect(
-        tester.getCenter(selectionBand).dy,
-        closeTo(tester.getCenter(list).dy, 1),
-      );
-      expect(
-        (tester.widget<DecoratedBox>(selectionBand).decoration as BoxDecoration)
-            .color,
-        Theme.of(tester.element(list)).colorScheme.inverseSurface,
-      );
+      expect(find.byKey(const Key('album-switch-scroll')), findsOneWidget);
       expect(
         tester.getCenter(find.byKey(const Key('album-switch-cover-0'))).dx,
         lessThan(
@@ -495,6 +382,52 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets('free album list scroll keeps per-row cover feedback', (
+    tester,
+  ) async {
+    const channel = MethodChannel('com.r19988088.wyyyy/cover_feedback');
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async => calls.add(call),
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      12,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner $index',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
+    );
+    final open = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await open.moveBy(const Offset(0, -24));
+    await open.up();
+    await tester.pumpAndSettle();
+    calls.clear();
+
+    await tester.drag(
+      find.byKey(const Key('album-switch-scroll')),
+      const Offset(0, -170),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls.where((call) => call.method == 'coverChanged').length, 2);
+  });
 
   testWidgets('album switch list extends beneath the glass player', (
     tester,
@@ -530,29 +463,18 @@ void main() {
     final playerRect = tester.getRect(
       find.byKey(const Key('player-glass-frame')),
     );
-    final lowerRowRect = tester.getRect(
-      find.byKey(const Key('album-switch-row-4')),
-    );
-    expect(lowerRowRect.top, greaterThanOrEqualTo(listRect.bottom));
     await tester.pump(const Duration(milliseconds: 180));
     await tester.pumpAndSettle();
 
-    final settledRowRect = tester.getRect(
-      find.byKey(const Key('album-switch-row-4')),
-    );
     expect(listRect.bottom, greaterThan(playerRect.bottom));
-    expect(
-      settledRowRect.overlaps(playerRect),
-      isTrue,
-      reason: 'row=$settledRowRect player=$playerRect list=$listRect',
-    );
+    expect(listRect.overlaps(playerRect), isTrue);
 
     await gesture.up();
     await tester.pumpAndSettle();
   });
 
   testWidgets(
-    'list switching browses vertically and returns to the cover without playing',
+    'opening the free album list does not change the browsed cover or playback',
     (tester) async {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1;
@@ -584,43 +506,23 @@ void main() {
       await tester.pumpAndSettle();
 
       final list = find.byKey(const Key('album-switch-list'));
-      expect(
-        tester.getCenter(find.byKey(const Key('album-switch-selected-2'))).dy,
-        closeTo(tester.getCenter(list).dy, 1),
-      );
-      expect(
-        tester.getCenter(find.byKey(const Key('album-switch-row-0'))).dy,
-        lessThan(tester.getCenter(list).dy),
-      );
+      expect(find.byKey(const Key('album-switch-selected-0')), findsOneWidget);
 
       await gesture.up();
       await tester.pumpAndSettle();
 
       expect(list, findsOneWidget);
-      await tester.tap(find.byKey(const Key('album-switch-selected-2')));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.byKey(const Key('album-switch-selected-2')));
-      await tester.pumpAndSettle();
-
-      expect(list, findsNothing);
-      expect(
-        tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
-        closeTo(
-          tester.getCenter(find.byKey(const Key('player-content'))).dx,
-          1,
-        ),
-      );
       expect(
         find.descendant(
           of: find.byKey(const Key('player-metadata')),
-          matching: find.text('Track 2'),
+          matching: find.text('Track 0'),
         ),
         findsOneWidget,
       );
     },
   );
 
-  testWidgets('vertical cover drag browses albums without playing', (
+  testWidgets('vertical cover drag opens the free list without browsing', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -649,27 +551,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
     await upward.up();
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('player-metadata')),
-        matching: find.text('Track 0'),
-      ),
-      findsOneWidget,
-    );
-
-    final downward = await tester.startGesture(
-      tester.getCenter(find.byKey(const Key('cover-art-1'))),
-    );
-    await downward.moveBy(const Offset(0, 24));
-    await tester.pump(const Duration(milliseconds: 100));
-    await downward.up();
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
@@ -752,6 +633,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('diagonal gesture waits for a clear direction', (tester) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await gesture.moveBy(const Offset(60, 50));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+  });
+
   testWidgets('back from the active cover opens the album list', (
     tester,
   ) async {
@@ -807,11 +704,19 @@ void main() {
     expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+      isNot(
+        closeTo(
+          tester.getCenter(find.byKey(const Key('player-content'))).dx,
+          1,
+        ),
+      ),
     );
 
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
     await tester.drag(
-      find.byKey(const Key('cover-art-1')),
+      find.byKey(const Key('cover-art-0')),
       const Offset(240, 0),
     );
     await tester.pumpAndSettle();
@@ -824,6 +729,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
+  });
+
+  testWidgets('double tapping any album row activates that collection', (
+    tester,
+  ) async {
+    final repository = InMemoryPlayerRepository(const [
+      MusicCollection('0', 'Collection 0', 'Owner 0', LibraryKind.album, [
+        Track('track-0', 'Track 0', 'Artist 0'),
+      ]),
+      MusicCollection('1', 'Collection 1', 'Owner 1', LibraryKind.album, [
+        Track('track-1', 'Track 1', 'Artist 1'),
+      ]),
+      MusicCollection('2', 'Collection 2', 'Owner 2', LibraryKind.album, [
+        Track('track-2', 'Track 2', 'Artist 2'),
+      ]),
+    ]);
+    await tester.pumpWidget(PlayerApp(repository: repository));
+
+    final open = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))),
+    );
+    await open.moveBy(const Offset(0, -40));
+    await open.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('album-switch-selected-2')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('album-switch-selected-2')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-metadata')),
+        matching: find.text('Track 2'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('returning to a cover preserves its image subtree', (
@@ -931,62 +878,6 @@ void main() {
     expect(find.byKey(const Key('player-glass-frame')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets(
-    'one scrub gesture keeps sampling after the focused page changes',
-    (tester) async {
-      const tracks = [Track('track', 'Track', 'Artist')];
-      final collections = List.generate(
-        8,
-        (index) => MusicCollection(
-          '$index',
-          'Collection $index',
-          'Owner',
-          LibraryKind.album,
-          tracks,
-        ),
-      );
-      await tester.pumpWidget(
-        PlayerApp(repository: InMemoryPlayerRepository(collections)),
-      );
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
-      );
-      for (var index = 0; index < 4; index++) {
-        await gesture.moveBy(const Offset(0, -30));
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      await gesture.up();
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.getCenter(find.byKey(const Key('cover-art-3'))).dx,
-        closeTo(
-          tester.getCenter(find.byKey(const Key('player-content'))).dx,
-          1,
-        ),
-      );
-
-      final returnGesture = await tester.startGesture(
-        tester.getCenter(find.byKey(const Key('cover-scrubber'))),
-      );
-      for (var index = 0; index < 4; index++) {
-        await returnGesture.moveBy(const Offset(0, 30));
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      await returnGesture.up();
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
-        closeTo(
-          tester.getCenter(find.byKey(const Key('player-content'))).dx,
-          1,
-        ),
-      );
-    },
-  );
 
   testWidgets('list switching stays open after a vertical wheel swipe', (
     tester,
@@ -1132,9 +1023,11 @@ void main() {
     expect(tester.takeException(), isNull);
     await albumGesture.up();
     await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
 
     await tester.drag(
-      find.byKey(const Key('cover-art-1')),
+      find.byKey(const Key('cover-art-0')),
       const Offset(240, 0),
     );
     await tester.pumpAndSettle();
@@ -1291,9 +1184,9 @@ class _ProgressRepository implements PlaybackRepository {
   @override
   Future<int> activate(
     MusicCollection collection, {
-    int trackIndex = 0,
+    int? trackIndex,
     bool autoplay = true,
-  }) async => trackIndex;
+  }) async => trackIndex ?? 0;
 
   @override
   Future<void> loadTracks(MusicCollection collection) async {}

@@ -100,11 +100,20 @@ class RustPlayerRepository implements PlaybackRepository {
   @override
   Future<int> activate(
     MusicCollection collection, {
-    int trackIndex = 0,
+    int? trackIndex,
     bool autoplay = true,
   }) async {
     final generation = ++_activationGeneration;
     await _saveNow();
+    rust.SavedPosition? savedPosition;
+    if (trackIndex == null) {
+      try {
+        savedPosition = savedPositionForCollection(
+          await rust_api.loadPlaybackState(),
+          collection,
+        );
+      } catch (_) {}
+    }
     await loadTracks(collection);
     if (generation != _activationGeneration) {
       throw StateError('播放请求已过期');
@@ -115,15 +124,35 @@ class RustPlayerRepository implements PlaybackRepository {
     final items = collection.tracks
         .map((track) => _mediaItem(track, collection))
         .toList(growable: false);
-    final index = trackIndex.clamp(0, items.length - 1);
+    final savedTrackIndex = savedPosition == null
+        ? -1
+        : collection.tracks.indexWhere(
+            (track) => track.id == savedPosition!.trackId,
+          );
+    final index =
+        (trackIndex ??
+                (savedTrackIndex >= 0
+                    ? savedTrackIndex
+                    : savedPosition?.trackIndex) ??
+                0)
+            .clamp(0, items.length - 1);
     await _handler.setPlayableQueue(
       items,
       initialIndex: index,
-      autoplay: autoplay,
+      autoplay: autoplay && savedPosition == null,
       resolveUri: _resolveMediaUri,
     );
     if (generation != _activationGeneration) {
       throw StateError('播放请求已过期');
+    }
+    if (savedPosition != null) {
+      await _handler.seek(
+        Duration(milliseconds: (savedPosition.position * 1000).round()),
+      );
+      if (generation != _activationGeneration) {
+        throw StateError('播放请求已过期');
+      }
+      if (autoplay) await _handler.play();
     }
     _active = collection;
     return index;
@@ -269,3 +298,14 @@ bool cachedLibraryNeedsRefresh(
 ) =>
     kind == LibraryKind.playlist &&
     items.any((item) => item.coverUrl.trim().isEmpty);
+
+rust.SavedPosition? savedPositionForCollection(
+  Iterable<rust.PlaybackRecord> records,
+  MusicCollection collection,
+) {
+  final key = '${collection.kind.name}:${collection.id}';
+  for (final record in records) {
+    if (record.collectionKey == key) return record.position;
+  }
+  return null;
+}

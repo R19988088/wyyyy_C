@@ -31,4 +31,40 @@ void main() {
 
     expect(cachedLibraryNeedsRefresh(LibraryKind.playlist, items), isFalse);
   });
+
+  test('saved playback is selected by exact collection kind and id', () {
+    final records = [
+      PlaybackRecord(
+        collectionKey: 'album:7',
+        position: SavedPosition(
+          trackId: 'album-track',
+          trackIndex: 1,
+          position: 12.0,
+          updatedAt: BigInt.zero,
+        ),
+      ),
+      PlaybackRecord(
+        collectionKey: 'playlist:7',
+        position: SavedPosition(
+          trackId: 'playlist-track',
+          trackIndex: 3,
+          position: 87.5,
+          updatedAt: BigInt.one,
+        ),
+      ),
+    ];
+    const collection = MusicCollection(
+      '7',
+      'Playlist',
+      'Owner',
+      LibraryKind.playlist,
+      [],
+    );
+
+    final saved = savedPositionForCollection(records, collection);
+
+    expect(saved?.trackId, 'playlist-track');
+    expect(saved?.trackIndex, 3);
+    expect(saved?.position, 87.5);
+  });
 }

@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import 'cover_scrubber.dart';
 import 'player.dart';
 import 'services/media_cache.dart';
 import 'services/cover_feedback.dart';
@@ -38,7 +37,6 @@ class _PlayerPageState extends State<PlayerPage>
   late final PlayerController controller;
   late PageController pages;
   late final AnimationController modeTransition;
-  late final CoverScrubSpeedController scrubSpeed;
   final contentKey = GlobalKey();
   final coverKeys = <String, GlobalKey>{};
   final retainedCoverIds = <String>{};
@@ -78,7 +76,6 @@ class _PlayerPageState extends State<PlayerPage>
       vsync: this,
       duration: const Duration(milliseconds: 420),
     );
-    scrubSpeed = CoverScrubSpeedController();
     pages = PageController(viewportFraction: _coverViewportFraction);
     final repository = widget.repository;
     if (repository is PlaybackRepository &&
@@ -180,20 +177,6 @@ class _PlayerPageState extends State<PlayerPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => oldPages.dispose());
   }
 
-  void _scrubCovers(double delta, Duration timestamp) {
-    final count = controller.visible.length;
-    final step = scrubSpeed.update(delta: delta, timestamp: timestamp);
-    if (step == null) return;
-    final target = (controller.browsedIndex + step).clamp(0, count - 1);
-    if (target == controller.browsedIndex) return;
-    _browseTo(target, feedbackCount: (target - controller.browsedIndex).abs());
-    pages.animateToPage(
-      target,
-      duration: const Duration(milliseconds: 90),
-      curve: Curves.easeOut,
-    );
-  }
-
   void _browseTo(int index, {int feedbackCount = 1}) {
     final changed = controller.browsedIndex != index;
     controller.browseTo(index);
@@ -204,7 +187,6 @@ class _PlayerPageState extends State<PlayerPage>
   }
 
   void _setScrubberActive(bool active) {
-    scrubSpeed.reset();
     if (scrubberActive == active) return;
     setState(() {
       scrubberActive = active;
@@ -212,13 +194,14 @@ class _PlayerPageState extends State<PlayerPage>
     });
   }
 
-  void _activateBrowsedAlbum() {
-    if (!controller.activateCentered(controller.browsedIndex)) return;
+  void _activateAlbumAt(int index) {
+    _browseTo(index);
+    pages.jumpToPage(index);
+    if (!controller.activateCentered(index)) return;
     _dismissAlbumList();
   }
 
   void _dismissAlbumList() {
-    scrubSpeed.reset();
     setState(() {
       scrubberActive = false;
       albumListOpen = false;
@@ -315,10 +298,9 @@ class _PlayerPageState extends State<PlayerPage>
                             coverPressed: scrubberActive,
                             showingSwitchList: albumListOpen,
                             onScrubStart: () => _setScrubberActive(true),
-                            onScrubUpdate: _scrubCovers,
                             onScrubEnd: () => _setScrubberActive(false),
                             onScrubCancel: _dismissAlbumList,
-                            activateBrowsedAlbum: _activateBrowsedAlbum,
+                            activateAlbumAt: _activateAlbumAt,
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -391,10 +373,9 @@ class _CoverMode extends StatelessWidget {
     required this.coverPressed,
     required this.showingSwitchList,
     required this.onScrubStart,
-    required this.onScrubUpdate,
     required this.onScrubEnd,
     required this.onScrubCancel,
-    required this.activateBrowsedAlbum,
+    required this.activateAlbumAt,
     required this.progress,
     required this.onSelected,
     required this.openSettings,
@@ -409,10 +390,9 @@ class _CoverMode extends StatelessWidget {
   final bool coverPressed;
   final bool showingSwitchList;
   final VoidCallback onScrubStart;
-  final void Function(double delta, Duration timestamp) onScrubUpdate;
   final VoidCallback onScrubEnd;
   final VoidCallback onScrubCancel;
-  final VoidCallback activateBrowsedAlbum;
+  final ValueChanged<int> activateAlbumAt;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
   final Future<void> Function() openSettings;
@@ -439,101 +419,93 @@ class _CoverMode extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _HorizontalSwipeRegion(
-                  onSwipe: openList,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onVerticalDragStart: (_) => onScrubStart(),
-                    onVerticalDragUpdate: (details) => onScrubUpdate(
-                      -details.delta.dy,
-                      WidgetsBinding.instance.currentSystemFrameTimeStamp,
-                    ),
-                    onVerticalDragEnd: (_) => onScrubEnd(),
-                    onVerticalDragCancel: onScrubCancel,
-                    child: Opacity(
-                      opacity: 1 - progress,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          IgnorePointer(
-                            ignoring: showingSwitchList,
-                            child: AnimatedOpacity(
-                              opacity: showingSwitchList ? 0 : 1,
-                              duration: const Duration(milliseconds: 180),
+                _DirectionalDragRegion(
+                  enabled: !showingSwitchList,
+                  onHorizontalSwipe: openList,
+                  onVerticalStart: onScrubStart,
+                  onVerticalEnd: onScrubEnd,
+                  onVerticalCancel: onScrubCancel,
+                  child: Opacity(
+                    opacity: 1 - progress,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        IgnorePointer(
+                          ignoring: showingSwitchList,
+                          child: AnimatedOpacity(
+                            opacity: showingSwitchList ? 0 : 1,
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutCubic,
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween(end: showingSwitchList ? 1 : 0),
+                              duration: const Duration(milliseconds: 240),
                               curve: Curves.easeOutCubic,
-                              child: TweenAnimationBuilder<double>(
-                                tween: Tween(end: showingSwitchList ? 1 : 0),
-                                duration: const Duration(milliseconds: 240),
-                                curve: Curves.easeOutCubic,
-                                builder: (context, fold, child) {
-                                  // Restore the hidden cover's layout after the
-                                  // visible fold so its gesture anchor stays put.
-                                  final motionFold = fold >= .98 ? 0.0 : fold;
-                                  return Transform(
-                                    key: const Key(
-                                      'cover-flow-fold-transition',
+                              builder: (context, fold, child) {
+                                // Restore the hidden cover's layout after the
+                                // visible fold so its gesture anchor stays put.
+                                final motionFold = fold >= .98 ? 0.0 : fold;
+                                return Transform(
+                                  key: const Key('cover-flow-fold-transition'),
+                                  alignment: Alignment.bottomCenter,
+                                  transform: Matrix4.identity()
+                                    ..setEntry(3, 2, .001)
+                                    ..rotateX(-.78 * motionFold)
+                                    ..translateByDouble(
+                                      0,
+                                      -20 * motionFold,
+                                      0,
+                                      1,
                                     ),
-                                    alignment: Alignment.bottomCenter,
-                                    transform: Matrix4.identity()
-                                      ..setEntry(3, 2, .001)
-                                      ..rotateX(-.78 * motionFold)
-                                      ..translateByDouble(
-                                        0,
-                                        -20 * motionFold,
-                                        0,
-                                        1,
-                                      ),
-                                    child: child,
-                                  );
-                                },
-                                child: _CoverFlow(
-                                  controller: controller,
-                                  pages: pages,
-                                  coverKeyFor: coverKeyFor,
-                                  keepCoverAlive: keepCoverAlive,
-                                  onPageChanged: onPageChanged,
-                                ),
+                                  child: child,
+                                );
+                              },
+                              child: _CoverFlow(
+                                controller: controller,
+                                pages: pages,
+                                coverKeyFor: coverKeyFor,
+                                keepCoverAlive: keepCoverAlive,
+                                onPageChanged: onPageChanged,
                               ),
                             ),
                           ),
-                          AnimatedSwitcher(
-                            key: const Key('cover-mode-switch'),
-                            duration: const Duration(milliseconds: 260),
-                            reverseDuration: const Duration(milliseconds: 180),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) {
-                              final isAlbumList =
-                                  child.key ==
-                                  const ValueKey('album-switch-content');
-                              return FadeTransition(
-                                opacity: animation,
-                                child: isAlbumList
-                                    ? SlideTransition(
-                                        key: const Key(
-                                          'album-switch-list-transition',
-                                        ),
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0, .12),
-                                          end: Offset.zero,
-                                        ).animate(animation),
-                                        child: child,
-                                      )
-                                    : child,
-                              );
-                            },
-                            child: showingSwitchList
-                                ? _AlbumSwitchList(
-                                    key: const ValueKey('album-switch-content'),
-                                    controller: controller,
-                                    onActivate: activateBrowsedAlbum,
-                                  )
-                                : const SizedBox.shrink(
-                                    key: ValueKey('cover-flow-content'),
-                                  ),
-                          ),
-                        ],
-                      ),
+                        ),
+                        AnimatedSwitcher(
+                          key: const Key('cover-mode-switch'),
+                          duration: const Duration(milliseconds: 260),
+                          reverseDuration: const Duration(milliseconds: 180),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final isAlbumList =
+                                child.key ==
+                                const ValueKey('album-switch-content');
+                            return FadeTransition(
+                              opacity: animation,
+                              child: isAlbumList
+                                  ? SlideTransition(
+                                      key: const Key(
+                                        'album-switch-list-transition',
+                                      ),
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0, .12),
+                                        end: Offset.zero,
+                                      ).animate(animation),
+                                      child: child,
+                                    )
+                                  : child,
+                            );
+                          },
+                          child: showingSwitchList
+                              ? _AlbumSwitchList(
+                                  key: const ValueKey('album-switch-content'),
+                                  controller: controller,
+                                  onActivate: activateAlbumAt,
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey('cover-flow-content'),
+                                ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -545,7 +517,6 @@ class _CoverMode extends StatelessWidget {
                   child: _CoverWheelRegion(
                     key: const Key('cover-wheel'),
                     onStart: onScrubStart,
-                    onUpdate: onScrubUpdate,
                     onEnd: onScrubEnd,
                     onCancel: onScrubCancel,
                   ),
@@ -563,13 +534,11 @@ class _CoverWheelRegion extends StatefulWidget {
   const _CoverWheelRegion({
     super.key,
     required this.onStart,
-    required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
   });
 
   final VoidCallback onStart;
-  final void Function(double delta, Duration timestamp) onUpdate;
   final VoidCallback onEnd;
   final VoidCallback onCancel;
 
@@ -592,19 +561,19 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
     final start = _startPosition;
     if (start == null) return;
     final delta = event.localPosition - start;
-    _axis ??= delta.distance <= kTouchSlop
-        ? null
-        : (delta.dx.abs() >= delta.dy.abs() ? Axis.horizontal : Axis.vertical);
+    if (_axis == null && delta.distance > kTouchSlop) {
+      if (delta.dx.abs() >= delta.dy.abs() * 1.5) {
+        _axis = Axis.horizontal;
+      } else if (delta.dy.abs() >= delta.dx.abs() * 1.5) {
+        _axis = Axis.vertical;
+      }
+    }
     if (_axis != Axis.vertical) return;
     if (!_scrubbing) {
       _scrubbing = true;
       widget.onStart();
       return;
     }
-    widget.onUpdate(
-      -event.delta.dy,
-      WidgetsBinding.instance.currentSystemFrameTimeStamp,
-    );
   }
 
   void _finish({required bool cancelled}) {
@@ -875,7 +844,11 @@ class _HorizontalSwipeRegionState extends State<_HorizontalSwipeRegion> {
     if (start == null || _axis != null) return;
     final delta = event.position - start;
     if (delta.distance <= kTouchSlop) return;
-    _axis = delta.dx.abs() >= delta.dy.abs() ? Axis.horizontal : Axis.vertical;
+    if (delta.dx.abs() >= delta.dy.abs() * 1.5) {
+      _axis = Axis.horizontal;
+    } else if (delta.dy.abs() >= delta.dx.abs() * 1.5) {
+      _axis = Axis.vertical;
+    }
   }
 
   void _finish(PointerUpEvent event) {
@@ -904,6 +877,88 @@ class _HorizontalSwipeRegionState extends State<_HorizontalSwipeRegion> {
         _start = null;
         _axis = null;
       },
+      child: widget.child,
+    );
+  }
+}
+
+class _DirectionalDragRegion extends StatefulWidget {
+  const _DirectionalDragRegion({
+    required this.enabled,
+    required this.onHorizontalSwipe,
+    required this.onVerticalStart,
+    required this.onVerticalEnd,
+    required this.onVerticalCancel,
+    required this.child,
+  });
+
+  final bool enabled;
+  final Future<void> Function() onHorizontalSwipe;
+  final VoidCallback onVerticalStart;
+  final VoidCallback onVerticalEnd;
+  final VoidCallback onVerticalCancel;
+  final Widget child;
+
+  @override
+  State<_DirectionalDragRegion> createState() => _DirectionalDragRegionState();
+}
+
+class _DirectionalDragRegionState extends State<_DirectionalDragRegion> {
+  Offset? _start;
+  Axis? _axis;
+
+  void _move(PointerMoveEvent event) {
+    final start = _start;
+    if (start == null) return;
+    if (_axis == Axis.vertical) return;
+    if (_axis != null) return;
+    final delta = event.position - start;
+    if (delta.distance <= kTouchSlop) return;
+    if (delta.dx.abs() >= delta.dy.abs() * 1.5) {
+      _axis = Axis.horizontal;
+    } else if (delta.dy.abs() >= delta.dx.abs() * 1.5) {
+      _axis = Axis.vertical;
+      widget.onVerticalStart();
+    }
+  }
+
+  void _finish(PointerUpEvent event) {
+    final start = _start;
+    final axis = _axis;
+    _reset();
+    if (start == null) return;
+    if (axis == Axis.vertical) {
+      widget.onVerticalEnd();
+    } else if (axis == Axis.horizontal &&
+        (event.position - start).dx.abs() > 32) {
+      widget.onHorizontalSwipe();
+    }
+  }
+
+  void _cancel() {
+    final vertical = _axis == Axis.vertical;
+    _reset();
+    if (vertical) widget.onVerticalCancel();
+  }
+
+  void _reset() {
+    _start = null;
+    _axis = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: widget.enabled
+          ? (event) {
+              _start = event.position;
+              _axis = null;
+            }
+          : null,
+      onPointerMove: widget.enabled ? _move : null,
+      onPointerUp: widget.enabled ? _finish : null,
+      onPointerCancel: widget.enabled ? (_) => _cancel() : null,
       child: widget.child,
     );
   }
@@ -969,7 +1024,7 @@ class _CoverTapRegionState extends State<_CoverTapRegion> {
   }
 }
 
-class _AlbumSwitchList extends StatelessWidget {
+class _AlbumSwitchList extends StatefulWidget {
   const _AlbumSwitchList({
     super.key,
     required this.controller,
@@ -979,150 +1034,110 @@ class _AlbumSwitchList extends StatelessWidget {
   static const rowExtent = 76.0;
 
   final PlayerController controller;
-  final VoidCallback onActivate;
+  final ValueChanged<int> onActivate;
+
+  @override
+  State<_AlbumSwitchList> createState() => _AlbumSwitchListState();
+}
+
+class _AlbumSwitchListState extends State<_AlbumSwitchList> {
+  late final ScrollController _scrollController = ScrollController(
+    initialScrollOffset:
+        widget.controller.browsedIndex * _AlbumSwitchList.rowExtent,
+  );
+  late int _feedbackStep = widget.controller.browsedIndex;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollUpdateNotification notification) {
+    final step = (notification.metrics.pixels / _AlbumSwitchList.rowExtent)
+        .round();
+    final count = (step - _feedbackStep).abs();
+    for (var index = 0; index < count; index++) {
+      CoverFeedback.playCoverChanged();
+    }
+    _feedbackStep = step;
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = controller.browsedIndex;
-    final first = math.max(0, selectedIndex - 4);
-    final last = math.min(controller.visible.length - 1, selectedIndex + 4);
-    final scheme = Theme.of(context).colorScheme;
+    final controller = widget.controller;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: ClipRect(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final center = constraints.maxHeight / 2;
-            return _CoverTapRegion(
+        child: NotificationListener<ScrollUpdateNotification>(
+          key: const Key('album-switch-list'),
+          onNotification: _onScroll,
+          child: ListView.builder(
+            key: const Key('album-switch-scroll'),
+            controller: _scrollController,
+            itemExtent: _AlbumSwitchList.rowExtent,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            itemCount: controller.visible.length,
+            itemBuilder: (context, index) => _CoverTapRegion(
               onTap: (_, activate) {
-                if (activate) onActivate();
+                if (activate) widget.onActivate(index);
               },
-              child: Stack(
-                key: const Key('album-switch-list'),
-                children: [
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: center - rowExtent / 2 + 4,
-                    height: rowExtent - 8,
-                    child: DecoratedBox(
-                      key: const Key('album-switch-selection-band'),
-                      decoration: BoxDecoration(
-                        color: scheme.inverseSurface,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                  ),
-                  for (var index = first; index <= last; index++)
-                    TweenAnimationBuilder<double>(
-                      key: ValueKey('album-switch-entry-$index'),
-                      tween: Tween(begin: 0, end: 1),
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      builder: (context, entry, child) {
-                        final entryDistance =
-                            constraints.maxHeight / 2 + rowExtent;
-                        final entryOffset = index < selectedIndex
-                            ? -entryDistance * (1 - entry)
-                            : index > selectedIndex
-                            ? entryDistance * (1 - entry)
-                            : 0.0;
-                        return AnimatedPositioned(
-                          key: Key('album-switch-position-$index'),
-                          left: 0,
-                          right: 0,
-                          top:
-                              center -
-                              rowExtent / 2 +
-                              (index - selectedIndex) * rowExtent +
-                              entryOffset,
-                          height: rowExtent,
-                          duration: const Duration(milliseconds: 90),
-                          curve: Curves.easeOut,
-                          child: child!,
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: DecoratedBox(
-                          key: index == selectedIndex
-                              ? Key('album-switch-selected-$index')
-                              : null,
-                          decoration: const BoxDecoration(
-                            color: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: DecoratedBox(
+                  key: Key('album-switch-selected-$index'),
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      key: Key('album-switch-row-$index'),
+                      children: [
+                        SizedBox.square(
+                          key: Key('album-switch-cover-$index'),
+                          dimension: 52,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: _AlbumSwitchCover(
+                              collection: controller.visible[index],
+                              fallbackColor: _fallbackCoverColor(index),
+                            ),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Row(
-                              key: Key('album-switch-row-$index'),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: MediaQuery.withClampedTextScaling(
+                            maxScaleFactor: 1.5,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                SizedBox.square(
-                                  key: Key('album-switch-cover-$index'),
-                                  dimension: 52,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: _AlbumSwitchCover(
-                                      collection: controller.visible[index],
-                                      fallbackColor: _fallbackCoverColor(index),
-                                    ),
-                                  ),
+                                Text(
+                                  controller.visible[index].title,
+                                  key: Key('album-switch-title-$index'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: MediaQuery.withClampedTextScaling(
-                                    maxScaleFactor: 1.5,
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          controller.visible[index].title,
-                                          key: Key('album-switch-title-$index'),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium
-                                              ?.copyWith(
-                                                color: index == selectedIndex
-                                                    ? scheme.onInverseSurface
-                                                    : scheme.onSurface,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          controller.visible[index].subtitle,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: index == selectedIndex
-                                                    ? scheme.onInverseSurface
-                                                          .withValues(
-                                                            alpha: .72,
-                                                          )
-                                                    : scheme.onSurfaceVariant,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  controller.visible[index].subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                ],
+                  ),
+                ),
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
