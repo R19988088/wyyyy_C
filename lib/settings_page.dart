@@ -34,6 +34,8 @@ class SettingsPage extends StatefulWidget {
     required this.onThemeChanged,
     required this.coverFeedback,
     required this.onCoverFeedbackChanged,
+    required this.listCoverSwitching,
+    required this.onListCoverSwitchingChanged,
   });
 
   final PlayerRepository repository;
@@ -41,6 +43,8 @@ class SettingsPage extends StatefulWidget {
   final ValueChanged<bool> onThemeChanged;
   final CoverFeedbackSettings coverFeedback;
   final ValueChanged<CoverFeedbackSettings> onCoverFeedbackChanged;
+  final bool listCoverSwitching;
+  final ValueChanged<bool> onListCoverSwitchingChanged;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -49,6 +53,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late bool dark = widget.dark;
   late CoverFeedbackSettings _coverFeedback = widget.coverFeedback;
+  late bool _listCoverSwitching = widget.listCoverSwitching;
   String _cacheSize = '正在计算…';
   bool _clearingCache = false;
   rust.Profile? _profile;
@@ -120,6 +125,23 @@ class _SettingsPageState extends State<SettingsPage> {
               setState(() => dark = value);
               widget.onThemeChanged(value);
             },
+          ),
+          ListTile(
+            leading: const Icon(Icons.swap_vert_rounded),
+            title: const Text('切换专辑时'),
+            trailing: SegmentedButton<bool>(
+              key: const Key('album-switch-view'),
+              segments: const [
+                ButtonSegment(value: false, label: Text('封面')),
+                ButtonSegment(value: true, label: Text('列表')),
+              ],
+              selected: {_listCoverSwitching},
+              onSelectionChanged: (selection) {
+                final value = selection.single;
+                setState(() => _listCoverSwitching = value);
+                widget.onListCoverSwitchingChanged(value);
+              },
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.vibration_rounded),

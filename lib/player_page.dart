@@ -25,10 +25,12 @@ class PlayerPage extends StatefulWidget {
   const PlayerPage({
     super.key,
     required this.repository,
+    required this.listCoverSwitching,
     required this.openSettings,
   });
 
   final PlayerRepository repository;
+  final bool listCoverSwitching;
   final Future<void> Function() openSettings;
 
   @override

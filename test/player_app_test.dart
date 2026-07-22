@@ -146,6 +146,38 @@ void main() {
     expect(saved.last.soundStrength, .85);
   });
 
+  testWidgets('settings selects and saves the album switching view', (
+    tester,
+  ) async {
+    final saved = <bool>[];
+    await tester.pumpWidget(
+      PlayerApp(
+        repository: InMemoryPlayerRepository.demo(),
+        saveListCoverSwitching: (value) async => saved.add(value),
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+
+    final selector = tester.widget<SegmentedButton<bool>>(
+      find.byKey(const Key('album-switch-view')),
+    );
+    expect(selector.selected, {false});
+
+    await tester.tap(find.text('列表'));
+    await tester.pump();
+
+    expect(saved, [true]);
+    expect(
+      tester
+          .widget<SegmentedButton<bool>>(
+            find.byKey(const Key('album-switch-view')),
+          )
+          .selected,
+      {true},
+    );
+  });
+
   testWidgets('center cover requires a double tap to start playback', (
     tester,
   ) async {
