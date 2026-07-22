@@ -735,6 +735,56 @@ void main() {
     },
   );
 
+  testWidgets('album switch list extends beneath the glass player', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    const tracks = [Track('track', 'Track', 'Artist')];
+    final collections = List.generate(
+      5,
+      (index) => MusicCollection(
+        '$index',
+        'Collection $index',
+        'Owner $index',
+        LibraryKind.album,
+        tracks,
+      ),
+    );
+    await tester.pumpWidget(
+      PlayerApp(
+        repository: InMemoryPlayerRepository(collections),
+        initialListCoverSwitching: true,
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('cover-scrubber'))),
+    );
+    await tester.pump();
+
+    final listRect = tester.getRect(find.byKey(const Key('album-switch-list')));
+    final playerRect = tester.getRect(
+      find.byKey(const Key('player-glass-frame')),
+    );
+    final lowerRowRect = tester.getRect(
+      find.byKey(const Key('album-switch-row-4')),
+    );
+    expect(listRect.bottom, greaterThan(playerRect.bottom));
+    expect(
+      lowerRowRect.overlaps(playerRect),
+      isTrue,
+      reason: 'row=$lowerRowRect player=$playerRect list=$listRect',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'list switching browses vertically and returns to the cover without playing',
     (tester) async {

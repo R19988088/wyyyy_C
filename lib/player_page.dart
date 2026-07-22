@@ -1087,7 +1087,7 @@ class _AlbumSwitchList extends StatelessWidget {
     final last = math.min(controller.visible.length - 1, selectedIndex + 4);
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 180),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: ClipRect(
         child: LayoutBuilder(
           builder: (context, constraints) {
