@@ -531,50 +531,40 @@ class _CoverWheelRegion extends StatefulWidget {
 }
 
 class _CoverWheelRegionState extends State<_CoverWheelRegion> {
-  Offset? _previousPosition;
-  bool _circularMoved = false;
-  bool _sampled = false;
+  Offset? _startPosition;
+  Axis? _axis;
+  bool _scrubbing = false;
 
   void _start(PointerDownEvent event) {
-    _previousPosition = event.localPosition;
-    _circularMoved = false;
-    _sampled = false;
-    widget.onStart();
+    _startPosition = event.localPosition;
+    _axis = null;
+    _scrubbing = false;
   }
 
   void _move(PointerMoveEvent event) {
-    final previous = _previousPosition;
-    if (previous == null) return;
-    final center = (context.size ?? Size.zero).center(Offset.zero);
-    final previousVector = previous - center;
-    final currentVector = event.localPosition - center;
-    final previousRadius = previousVector.distance;
-    final currentRadius = currentVector.distance;
-    final radialDelta = currentRadius - previousRadius;
-    var angularDelta =
-        math.atan2(currentVector.dy, currentVector.dx) -
-        math.atan2(previousVector.dy, previousVector.dx);
-    if (angularDelta > math.pi) angularDelta -= 2 * math.pi;
-    if (angularDelta < -math.pi) angularDelta += 2 * math.pi;
-    final tangentialDelta = angularDelta * (previousRadius + currentRadius) / 2;
-    final circular =
-        previousRadius >= 24 &&
-        currentRadius >= 24 &&
-        tangentialDelta.abs() > radialDelta.abs();
-    _circularMoved |= circular;
-    final delta = _circularMoved
-        ? tangentialDelta
-        : (_sampled ? event.delta.dx : 0.0);
-    widget.onUpdate(delta, WidgetsBinding.instance.currentSystemFrameTimeStamp);
-    _sampled = true;
-    _previousPosition = event.localPosition;
+    final start = _startPosition;
+    if (start == null) return;
+    final delta = event.localPosition - start;
+    _axis ??= delta.distance <= kTouchSlop
+        ? null
+        : (delta.dx.abs() >= delta.dy.abs() ? Axis.horizontal : Axis.vertical);
+    if (_axis != Axis.vertical) return;
+    if (!_scrubbing) {
+      _scrubbing = true;
+      widget.onStart();
+      return;
+    }
+    widget.onUpdate(
+      -event.delta.dy,
+      WidgetsBinding.instance.currentSystemFrameTimeStamp,
+    );
   }
 
   void _finish() {
-    _previousPosition = null;
-    _circularMoved = false;
-    _sampled = false;
-    widget.onEnd();
+    _startPosition = null;
+    _axis = null;
+    if (_scrubbing) widget.onEnd();
+    _scrubbing = false;
   }
 
   @override
@@ -838,7 +828,7 @@ class _HorizontalSwipeRegionState extends State<_HorizontalSwipeRegion> {
     if (start == null || _axis != null) return;
     final delta = event.position - start;
     if (delta.distance <= kTouchSlop) return;
-    _axis = delta.dx.abs() > delta.dy.abs() ? Axis.horizontal : Axis.vertical;
+    _axis = delta.dx.abs() >= delta.dy.abs() ? Axis.horizontal : Axis.vertical;
   }
 
   void _finish(PointerUpEvent event) {

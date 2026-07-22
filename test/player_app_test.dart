@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -279,7 +277,7 @@ void main() {
     }
   });
 
-  testWidgets('hidden scrubber uses a fast drag to cross multiple covers', (
+  testWidgets('hidden scrubber uses a fast vertical drag to cross covers', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -288,7 +286,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const Key('cover-scrubber')),
-      const Offset(80, 0),
+      const Offset(0, -80),
     );
     await tester.pumpAndSettle();
 
@@ -318,7 +316,7 @@ void main() {
 
     await tester.drag(
       find.byKey(const Key('cover-scrubber')),
-      const Offset(80, 0),
+      const Offset(0, -80),
     );
     await tester.pumpAndSettle();
 
@@ -342,17 +340,14 @@ void main() {
     );
 
     final wheel = find.byKey(const Key('cover-wheel'));
-    final center = tester.getCenter(wheel);
-    const radius = 70.0;
-    Offset point(double angle) =>
-        center + Offset(math.cos(angle), math.sin(angle)) * radius;
-
-    final clockwise = await tester.startGesture(point(0));
-    await clockwise.moveTo(point(.35));
+    final upward = await tester.startGesture(tester.getCenter(wheel));
+    await upward.moveBy(const Offset(0, -24));
     await tester.pump(const Duration(milliseconds: 100));
-    await clockwise.moveTo(point(.7));
+    await upward.moveBy(const Offset(0, -24));
     await tester.pump(const Duration(milliseconds: 100));
-    await clockwise.up();
+    await upward.moveBy(const Offset(0, -24));
+    await tester.pump(const Duration(milliseconds: 100));
+    await upward.up();
     await tester.pumpAndSettle();
 
     expect(
@@ -360,18 +355,12 @@ void main() {
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
 
-    final counterClockwise = await tester.startGesture(point(0));
-    await counterClockwise.moveTo(point(-.35));
-    await tester.pump(const Duration(milliseconds: 100));
-    await counterClockwise.moveTo(point(-.7));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
-      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
-    );
-    await counterClockwise.moveTo(point(-1.05));
-    await tester.pump(const Duration(milliseconds: 100));
-    await counterClockwise.up();
+    final downward = await tester.startGesture(tester.getCenter(wheel));
+    for (var index = 0; index < 3; index++) {
+      await downward.moveBy(const Offset(0, 24));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await downward.up();
     await tester.pumpAndSettle();
 
     expect(
@@ -394,13 +383,9 @@ void main() {
     );
 
     final wheel = find.byKey(const Key('cover-wheel'));
-    final center = tester.getCenter(wheel);
-    const radius = 70.0;
-    Offset point(double angle) =>
-        center + Offset(math.cos(angle), math.sin(angle)) * radius;
-    final gesture = await tester.startGesture(point(0));
+    final gesture = await tester.startGesture(tester.getCenter(wheel));
     for (var step = 1; step <= 12; step++) {
-      await gesture.moveTo(point(-step * .35));
+      await gesture.moveBy(const Offset(0, 24));
       await tester.pump(const Duration(milliseconds: 20));
     }
 
@@ -421,7 +406,7 @@ void main() {
     expect(releasedSlide.duration, const Duration(milliseconds: 300));
   });
 
-  testWidgets('reversing a circular edge gesture can browse inward', (
+  testWidgets('wheel uses 45 degrees to distinguish vertical and horizontal', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -435,28 +420,29 @@ void main() {
     );
 
     final wheel = find.byKey(const Key('cover-wheel'));
-    final center = tester.getCenter(wheel);
-    const radius = 70.0;
-    Offset point(double angle, [double radialOffset = 0]) =>
-        center +
-        Offset(math.cos(angle), math.sin(angle)) * (radius + radialOffset);
-    final gesture = await tester.startGesture(point(0));
-    await gesture.moveTo(point(-.35));
+    final vertical = await tester.startGesture(tester.getCenter(wheel));
+    await vertical.moveBy(const Offset(24, -25));
     await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(point(-.7));
+    await vertical.moveBy(const Offset(0, -25));
     await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(point(-.35, 10));
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(point(.05));
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(point(.4));
+    await vertical.up();
     await tester.pumpAndSettle();
 
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
     );
-    await gesture.up();
+
+    final horizontal = await tester.startGesture(tester.getCenter(wheel));
+    await horizontal.moveBy(const Offset(25, -24));
+    await tester.pump(const Duration(milliseconds: 100));
+    await horizontal.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
   });
 
   testWidgets('cover caption uses the cover width', (tester) async {
@@ -504,6 +490,7 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
+      await gesture.moveBy(const Offset(0, -24));
       await tester.pump();
 
       final list = find.byKey(const Key('album-switch-list'));
@@ -564,6 +551,7 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-scrubber'))),
     );
+    await gesture.moveBy(const Offset(0, -24));
     await tester.pump();
 
     final listRect = tester.getRect(find.byKey(const Key('album-switch-list')));
@@ -609,11 +597,12 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
-      await gesture.moveBy(const Offset(1, 0));
-      await tester.pump(const Duration(milliseconds: 16));
-      await gesture.moveBy(const Offset(80, 0));
+      await gesture.moveBy(const Offset(0, -80));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveBy(const Offset(0, -80));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
       final list = find.byKey(const Key('album-switch-list'));
       expect(
@@ -921,7 +910,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await gesture.moveBy(const Offset(30, 0));
+        await gesture.moveBy(const Offset(0, -30));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await gesture.up();
@@ -939,7 +928,7 @@ void main() {
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
       );
       for (var index = 0; index < 4; index++) {
-        await returnGesture.moveBy(const Offset(-30, 0));
+        await returnGesture.moveBy(const Offset(0, 30));
         await tester.pump(const Duration(milliseconds: 100));
       }
       await returnGesture.up();
@@ -989,6 +978,7 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-scrubber'))),
     );
+    await gesture.moveBy(const Offset(0, -24));
     await tester.pump();
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
 
