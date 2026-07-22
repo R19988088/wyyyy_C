@@ -204,6 +204,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
   });
 
   testWidgets('tapping the hidden side area does not change the cover', (
@@ -561,11 +562,18 @@ void main() {
     final lowerRowRect = tester.getRect(
       find.byKey(const Key('album-switch-row-4')),
     );
+    expect(lowerRowRect.top, greaterThanOrEqualTo(listRect.bottom));
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.pumpAndSettle();
+
+    final settledRowRect = tester.getRect(
+      find.byKey(const Key('album-switch-row-4')),
+    );
     expect(listRect.bottom, greaterThan(playerRect.bottom));
     expect(
-      lowerRowRect.overlaps(playerRect),
+      settledRowRect.overlaps(playerRect),
       isTrue,
-      reason: 'row=$lowerRowRect player=$playerRect list=$listRect',
+      reason: 'row=$settledRowRect player=$playerRect list=$listRect',
     );
 
     await gesture.up();
@@ -617,6 +625,12 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
+      expect(list, findsOneWidget);
+      await tester.tap(find.byKey(const Key('album-switch-selected-2')));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.byKey(const Key('album-switch-selected-2')));
+      await tester.pumpAndSettle();
+
       expect(list, findsNothing);
       expect(
         tester.getCenter(find.byKey(const Key('cover-art-2'))).dx,
@@ -628,7 +642,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('player-metadata')),
-          matching: find.text('Track 0'),
+          matching: find.text('Track 2'),
         ),
         findsOneWidget,
       );
@@ -666,7 +680,7 @@ void main() {
     await upward.up();
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
@@ -687,6 +701,7 @@ void main() {
     await downward.up();
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
@@ -698,6 +713,28 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('cancelled list tap cannot complete a double-tap activation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+    final wheel = find.byKey(const Key('cover-scrubber'));
+    final browse = await tester.startGesture(tester.getCenter(wheel));
+    await browse.moveBy(const Offset(0, -24));
+    await browse.up();
+    await tester.pumpAndSettle();
+
+    final selected = find.byKey(const Key('album-switch-selected-0'));
+    await tester.tap(selected);
+    final cancelled = await tester.startGesture(tester.getCenter(selected));
+    await cancelled.cancel();
+    await tester.tap(selected);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
   });
 
   testWidgets('horizontal swipe toggles the cover and track list', (
@@ -944,32 +981,31 @@ void main() {
     },
   );
 
-  testWidgets(
-    'list switching returns to the cover after a vertical wheel swipe',
-    (tester) async {
-      await tester.pumpWidget(
-        PlayerApp(repository: InMemoryPlayerRepository.demo()),
-      );
+  testWidgets('list switching stays open after a vertical wheel swipe', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
 
-      await tester.fling(
-        find.byKey(const Key('cover-scrubber')),
-        const Offset(0, -400),
-        1000,
-      );
-      await tester.pumpAndSettle();
+    await tester.fling(
+      find.byKey(const Key('cover-scrubber')),
+      const Offset(0, -400),
+      1000,
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('album-switch-list')), findsNothing);
-      expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
-      expect(find.byKey(const ValueKey('covers')), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('player-metadata')),
-          matching: find.text('晴天'),
-        ),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+    expect(find.byKey(const ValueKey('covers')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-metadata')),
+        matching: find.text('晴天'),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('cancelling list switching returns to the cover', (tester) async {
     await tester.pumpWidget(
@@ -1164,7 +1200,7 @@ void main() {
     expect(find.byKey(const Key('cover-expansion')), findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('covers')), findsOneWidget);
-    expect(find.text('时间的歌'), findsOneWidget);
+    expect(find.text('时间的歌'), findsWidgets);
     expect(
       tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
       closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),

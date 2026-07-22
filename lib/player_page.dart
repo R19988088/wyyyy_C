@@ -49,6 +49,7 @@ class _PlayerPageState extends State<PlayerPage>
   int? listOriginIndex;
   bool listMode = false;
   bool scrubberActive = false;
+  bool albumListOpen = false;
   double edgeOverscroll = 0;
 
   GlobalKey _coverKey(MusicCollection collection) =>
@@ -239,10 +240,28 @@ class _PlayerPageState extends State<PlayerPage>
 
   void _setScrubberActive(bool active) {
     scrubSpeed.reset();
-    if (scrubberActive == active && (active || edgeOverscroll == 0)) return;
+    if (scrubberActive == active &&
+        (!active || (albumListOpen && edgeOverscroll == 0))) {
+      return;
+    }
     setState(() {
       scrubberActive = active;
+      if (active) albumListOpen = true;
       if (!active) edgeOverscroll = 0;
+    });
+  }
+
+  void _activateBrowsedAlbum() {
+    if (!controller.activateCentered(controller.browsedIndex)) return;
+    _dismissAlbumList();
+  }
+
+  void _dismissAlbumList() {
+    scrubSpeed.reset();
+    setState(() {
+      scrubberActive = false;
+      albumListOpen = false;
+      edgeOverscroll = 0;
     });
   }
 
@@ -326,12 +345,15 @@ class _PlayerPageState extends State<PlayerPage>
                             keepCoverAlive: _keepCoverAlive,
                             onPageChanged: _browseTo,
                             coverPressed: scrubberActive,
+                            showingSwitchList: albumListOpen,
                             edgeOffsetFraction:
                                 edgeOverscroll /
                                 MediaQuery.sizeOf(context).width,
                             onScrubStart: () => _setScrubberActive(true),
                             onScrubUpdate: _scrubCovers,
                             onScrubEnd: () => _setScrubberActive(false),
+                            onScrubCancel: _dismissAlbumList,
+                            activateBrowsedAlbum: _activateBrowsedAlbum,
                             progress: progress,
                             onSelected: _selectKind,
                             openSettings: () async {
@@ -402,10 +424,13 @@ class _CoverMode extends StatelessWidget {
     required this.keepCoverAlive,
     required this.onPageChanged,
     required this.coverPressed,
+    required this.showingSwitchList,
     required this.edgeOffsetFraction,
     required this.onScrubStart,
     required this.onScrubUpdate,
     required this.onScrubEnd,
+    required this.onScrubCancel,
+    required this.activateBrowsedAlbum,
     required this.progress,
     required this.onSelected,
     required this.openSettings,
@@ -418,10 +443,13 @@ class _CoverMode extends StatelessWidget {
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
   final bool coverPressed;
+  final bool showingSwitchList;
   final double edgeOffsetFraction;
   final VoidCallback onScrubStart;
   final void Function(double delta, Duration timestamp) onScrubUpdate;
   final VoidCallback onScrubEnd;
+  final VoidCallback onScrubCancel;
+  final VoidCallback activateBrowsedAlbum;
   final double progress;
   final ValueChanged<LibraryKind> onSelected;
   final Future<void> Function() openSettings;
@@ -432,7 +460,6 @@ class _CoverMode extends StatelessWidget {
     final screenSize = MediaQuery.sizeOf(context);
     final wheelExpanded = screenSize.height >= 700;
     final wheelSide = math.max(24.0, (screenSize.width - 220) / 2);
-    final showingSwitchList = coverPressed;
     return IgnorePointer(
       ignoring: progress > 0,
       child: Column(
@@ -459,7 +486,7 @@ class _CoverMode extends StatelessWidget {
                       WidgetsBinding.instance.currentSystemFrameTimeStamp,
                     ),
                     onVerticalDragEnd: (_) => onScrubEnd(),
-                    onVerticalDragCancel: onScrubEnd,
+                    onVerticalDragCancel: onScrubCancel,
                     child: Opacity(
                       opacity: 1 - progress,
                       child: AnimatedSlide(
@@ -486,7 +513,10 @@ class _CoverMode extends StatelessWidget {
                               ),
                             ),
                             if (showingSwitchList)
-                              _AlbumSwitchList(controller: controller),
+                              _AlbumSwitchList(
+                                controller: controller,
+                                onActivate: activateBrowsedAlbum,
+                              ),
                           ],
                         ),
                       ),
@@ -503,6 +533,7 @@ class _CoverMode extends StatelessWidget {
                     onStart: onScrubStart,
                     onUpdate: onScrubUpdate,
                     onEnd: onScrubEnd,
+                    onCancel: onScrubCancel,
                   ),
                 ),
               ],
@@ -520,11 +551,13 @@ class _CoverWheelRegion extends StatefulWidget {
     required this.onStart,
     required this.onUpdate,
     required this.onEnd,
+    required this.onCancel,
   });
 
   final VoidCallback onStart;
   final void Function(double delta, Duration timestamp) onUpdate;
   final VoidCallback onEnd;
+  final VoidCallback onCancel;
 
   @override
   State<_CoverWheelRegion> createState() => _CoverWheelRegionState();
@@ -560,10 +593,10 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
     );
   }
 
-  void _finish() {
+  void _finish({required bool cancelled}) {
     _startPosition = null;
     _axis = null;
-    if (_scrubbing) widget.onEnd();
+    if (_scrubbing) (cancelled ? widget.onCancel : widget.onEnd)();
     _scrubbing = false;
   }
 
@@ -574,8 +607,8 @@ class _CoverWheelRegionState extends State<_CoverWheelRegion> {
       behavior: HitTestBehavior.opaque,
       onPointerDown: _start,
       onPointerMove: _move,
-      onPointerUp: (_) => _finish(),
-      onPointerCancel: (_) => _finish(),
+      onPointerUp: (_) => _finish(cancelled: false),
+      onPointerCancel: (_) => _finish(cancelled: true),
     );
   }
 }
@@ -887,6 +920,8 @@ class _CoverTapRegionState extends State<_CoverTapRegion> {
     final start = pointerDownPosition;
     if (start != null && (event.position - start).distance > kTouchSlop) {
       pointerMoved = true;
+      lastTapPosition = null;
+      lastTapTime = null;
     }
   }
 
@@ -909,18 +944,24 @@ class _CoverTapRegionState extends State<_CoverTapRegion> {
       onPointerDown: _pointerDown,
       onPointerMove: _pointerMove,
       onPointerUp: _pointerUp,
-      onPointerCancel: (_) => pointerMoved = true,
+      onPointerCancel: (_) {
+        pointerDownPosition = null;
+        pointerMoved = true;
+        lastTapPosition = null;
+        lastTapTime = null;
+      },
       child: widget.child,
     );
   }
 }
 
 class _AlbumSwitchList extends StatelessWidget {
-  const _AlbumSwitchList({required this.controller});
+  const _AlbumSwitchList({required this.controller, required this.onActivate});
 
   static const rowExtent = 76.0;
 
   final PlayerController controller;
+  final VoidCallback onActivate;
 
   @override
   Widget build(BuildContext context) {
@@ -934,109 +975,134 @@ class _AlbumSwitchList extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final center = constraints.maxHeight / 2;
-            return Stack(
-              key: const Key('album-switch-list'),
-              children: [
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: center - rowExtent / 2 + 4,
-                  height: rowExtent - 8,
-                  child: DecoratedBox(
-                    key: const Key('album-switch-selection-band'),
-                    decoration: BoxDecoration(
-                      color: scheme.inverseSurface,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                ),
-                for (var index = first; index <= last; index++)
-                  AnimatedPositioned(
-                    key: Key('album-switch-position-$index'),
+            return _CoverTapRegion(
+              onTap: (_, activate) {
+                if (activate) onActivate();
+              },
+              child: Stack(
+                key: const Key('album-switch-list'),
+                children: [
+                  Positioned(
                     left: 0,
                     right: 0,
-                    top:
-                        center -
-                        rowExtent / 2 +
-                        (index - selectedIndex) * rowExtent,
-                    height: rowExtent,
-                    duration: const Duration(milliseconds: 90),
-                    curve: Curves.easeOut,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: DecoratedBox(
-                        key: index == selectedIndex
-                            ? Key('album-switch-selected-$index')
-                            : null,
-                        decoration: const BoxDecoration(
-                          color: Colors.transparent,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Row(
-                            key: Key('album-switch-row-$index'),
-                            children: [
-                              SizedBox.square(
-                                key: Key('album-switch-cover-$index'),
-                                dimension: 52,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: _AlbumSwitchCover(
-                                    collection: controller.visible[index],
-                                    fallbackColor: _fallbackCoverColor(index),
+                    top: center - rowExtent / 2 + 4,
+                    height: rowExtent - 8,
+                    child: DecoratedBox(
+                      key: const Key('album-switch-selection-band'),
+                      decoration: BoxDecoration(
+                        color: scheme.inverseSurface,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                  for (var index = first; index <= last; index++)
+                    TweenAnimationBuilder<double>(
+                      key: ValueKey('album-switch-entry-$index'),
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      builder: (context, entry, child) {
+                        final entryDistance =
+                            constraints.maxHeight / 2 + rowExtent;
+                        final entryOffset = index < selectedIndex
+                            ? -entryDistance * (1 - entry)
+                            : index > selectedIndex
+                            ? entryDistance * (1 - entry)
+                            : 0.0;
+                        return AnimatedPositioned(
+                          key: Key('album-switch-position-$index'),
+                          left: 0,
+                          right: 0,
+                          top:
+                              center -
+                              rowExtent / 2 +
+                              (index - selectedIndex) * rowExtent +
+                              entryOffset,
+                          height: rowExtent,
+                          duration: const Duration(milliseconds: 90),
+                          curve: Curves.easeOut,
+                          child: child!,
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: DecoratedBox(
+                          key: index == selectedIndex
+                              ? Key('album-switch-selected-$index')
+                              : null,
+                          decoration: const BoxDecoration(
+                            color: Colors.transparent,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Row(
+                              key: Key('album-switch-row-$index'),
+                              children: [
+                                SizedBox.square(
+                                  key: Key('album-switch-cover-$index'),
+                                  dimension: 52,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: _AlbumSwitchCover(
+                                      collection: controller.visible[index],
+                                      fallbackColor: _fallbackCoverColor(index),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: MediaQuery.withClampedTextScaling(
-                                  maxScaleFactor: 1.5,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        controller.visible[index].title,
-                                        key: Key('album-switch-title-$index'),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
-                                              color: index == selectedIndex
-                                                  ? scheme.onInverseSurface
-                                                  : scheme.onSurface,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        controller.visible[index].subtitle,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: index == selectedIndex
-                                                  ? scheme.onInverseSurface
-                                                        .withValues(alpha: .72)
-                                                  : scheme.onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: MediaQuery.withClampedTextScaling(
+                                    maxScaleFactor: 1.5,
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          controller.visible[index].title,
+                                          key: Key('album-switch-title-$index'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                color: index == selectedIndex
+                                                    ? scheme.onInverseSurface
+                                                    : scheme.onSurface,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          controller.visible[index].subtitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: index == selectedIndex
+                                                    ? scheme.onInverseSurface
+                                                          .withValues(
+                                                            alpha: .72,
+                                                          )
+                                                    : scheme.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             );
           },
         ),
