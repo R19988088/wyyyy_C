@@ -121,10 +121,16 @@ jobs:
         run: |
           git tag --force continuous "$GITHUB_SHA"
           git push origin refs/tags/continuous --force
+          release_notes=$'简单的网易云音乐播放器\n\n本身不支持添加或取消收藏。（暂时）'
           if ! gh release view continuous >/dev/null 2>&1; then
             gh release create continuous \
               --prerelease \
               --title "持续构建" \
-              --notes "固定签名的 Android Release APK"
+              --notes "$release_notes"
+          else
+            gh release edit continuous \
+              --prerelease \
+              --title "持续构建" \
+              --notes "$release_notes"
           fi
           gh release upload continuous "wyyyy.apk#Android Release APK" --clobber

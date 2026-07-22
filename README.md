@@ -1,6 +1,15 @@
 # 云音乐
 
-Flutter 原生 GPU UI + Rust Core 的极简网易云音乐播放器。主界面不使用 WebView。
+简单的网易云音乐播放器。
+
+本身不支持添加或取消收藏。（暂时）
+
+## 截图
+
+<p>
+  <img src="docs/images/player-cover.jpg" width="260" alt="播放器封面视图">
+  <img src="docs/images/player-album-list.jpg" width="260" alt="播放器专辑列表视图">
+</p>
 
 ## 功能
 
