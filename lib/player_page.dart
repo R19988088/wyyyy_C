@@ -11,7 +11,7 @@ import 'services/cover_feedback.dart';
 import 'widgets/glass_player.dart';
 
 const _coverViewportFraction = .16;
-const _coverWidthFraction = .8;
+const _coverWidthFraction = .88;
 const _firstSideCoverOffset = .423;
 const _sideCoverStep = .068;
 const _sideCoverScale = .62;
@@ -226,6 +226,7 @@ class _PlayerPageState extends State<PlayerPage>
   }
 
   Future<void> _returnToPlaying() async {
+    if (albumListOpen) _dismissAlbumList();
     final targetKind = controller.activeKind;
     if (controller.kind != targetKind) {
       controller.selectKind(targetKind);
@@ -277,9 +278,16 @@ class _PlayerPageState extends State<PlayerPage>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !listMode,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && listMode) _closeList();
+        if (didPop) return;
+        if (listMode) {
+          _closeList();
+        } else if (albumListOpen) {
+          _dismissAlbumList();
+        } else {
+          _setScrubberActive(true);
+        }
       },
       child: Scaffold(
         body: SafeArea(

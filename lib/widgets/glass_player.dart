@@ -64,6 +64,7 @@ class GlassPlayer extends StatelessWidget {
                         child: Row(
                           children: [
                             Container(
+                              key: const Key('player-mini-cover'),
                               width: 44,
                               height: 44,
                               clipBehavior: Clip.antiAlias,

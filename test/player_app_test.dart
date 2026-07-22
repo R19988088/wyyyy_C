@@ -744,6 +744,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('back from the active cover opens the album list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+  });
+
+  testWidgets('double tapping player cover returns to the active cover', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('player-mini-cover')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('player-mini-cover')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('album-switch-list')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
+  });
+
   testWidgets('vertical-first gestures do not toggle cover and track list', (
     tester,
   ) async {
