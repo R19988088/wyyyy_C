@@ -464,6 +464,14 @@ void main() {
       );
       expect(list, findsOneWidget);
       expect(
+        find.byKey(const Key('cover-flow-fold-transition')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('album-switch-list-transition')),
+        findsOneWidget,
+      );
+      expect(
         tester.getCenter(selected).dy,
         closeTo(tester.getCenter(list).dy, 1),
       );

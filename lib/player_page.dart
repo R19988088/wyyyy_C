@@ -461,10 +461,31 @@ class _CoverMode extends StatelessWidget {
                               opacity: showingSwitchList ? 0 : 1,
                               duration: const Duration(milliseconds: 180),
                               curve: Curves.easeOutCubic,
-                              child: AnimatedScale(
-                                scale: showingSwitchList ? .96 : 1,
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(end: showingSwitchList ? 1 : 0),
                                 duration: const Duration(milliseconds: 240),
                                 curve: Curves.easeOutCubic,
+                                builder: (context, fold, child) {
+                                  // Restore the hidden cover's layout after the
+                                  // visible fold so its gesture anchor stays put.
+                                  final motionFold = fold >= .98 ? 0.0 : fold;
+                                  return Transform(
+                                    key: const Key(
+                                      'cover-flow-fold-transition',
+                                    ),
+                                    alignment: Alignment.bottomCenter,
+                                    transform: Matrix4.identity()
+                                      ..setEntry(3, 2, .001)
+                                      ..rotateX(-.78 * motionFold)
+                                      ..translateByDouble(
+                                        0,
+                                        -20 * motionFold,
+                                        0,
+                                        1,
+                                      ),
+                                    child: child,
+                                  );
+                                },
                                 child: _CoverFlow(
                                   controller: controller,
                                   pages: pages,
@@ -481,23 +502,26 @@ class _CoverMode extends StatelessWidget {
                             reverseDuration: const Duration(milliseconds: 180),
                             switchInCurve: Curves.easeOutCubic,
                             switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) =>
-                                FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: Tween<Offset>(
-                                      begin: const Offset(0, .035),
-                                      end: Offset.zero,
-                                    ).animate(animation),
-                                    child: ScaleTransition(
-                                      scale: Tween<double>(
-                                        begin: .96,
-                                        end: 1,
-                                      ).animate(animation),
-                                      child: child,
-                                    ),
-                                  ),
-                                ),
+                            transitionBuilder: (child, animation) {
+                              final isAlbumList =
+                                  child.key ==
+                                  const ValueKey('album-switch-content');
+                              return FadeTransition(
+                                opacity: animation,
+                                child: isAlbumList
+                                    ? SlideTransition(
+                                        key: const Key(
+                                          'album-switch-list-transition',
+                                        ),
+                                        position: Tween<Offset>(
+                                          begin: const Offset(0, .12),
+                                          end: Offset.zero,
+                                        ).animate(animation),
+                                        child: child,
+                                      )
+                                    : child,
+                              );
+                            },
                             child: showingSwitchList
                                 ? _AlbumSwitchList(
                                     key: const ValueKey('album-switch-content'),
