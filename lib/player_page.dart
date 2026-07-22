@@ -457,22 +457,57 @@ class _CoverMode extends StatelessWidget {
                         children: [
                           IgnorePointer(
                             ignoring: showingSwitchList,
-                            child: Opacity(
+                            child: AnimatedOpacity(
                               opacity: showingSwitchList ? 0 : 1,
-                              child: _CoverFlow(
-                                controller: controller,
-                                pages: pages,
-                                coverKeyFor: coverKeyFor,
-                                keepCoverAlive: keepCoverAlive,
-                                onPageChanged: onPageChanged,
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOutCubic,
+                              child: AnimatedScale(
+                                scale: showingSwitchList ? .96 : 1,
+                                duration: const Duration(milliseconds: 240),
+                                curve: Curves.easeOutCubic,
+                                child: _CoverFlow(
+                                  controller: controller,
+                                  pages: pages,
+                                  coverKeyFor: coverKeyFor,
+                                  keepCoverAlive: keepCoverAlive,
+                                  onPageChanged: onPageChanged,
+                                ),
                               ),
                             ),
                           ),
-                          if (showingSwitchList)
-                            _AlbumSwitchList(
-                              controller: controller,
-                              onActivate: activateBrowsedAlbum,
-                            ),
+                          AnimatedSwitcher(
+                            key: const Key('cover-mode-switch'),
+                            duration: const Duration(milliseconds: 260),
+                            reverseDuration: const Duration(milliseconds: 180),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, .035),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: ScaleTransition(
+                                      scale: Tween<double>(
+                                        begin: .96,
+                                        end: 1,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
+                                  ),
+                                ),
+                            child: showingSwitchList
+                                ? _AlbumSwitchList(
+                                    key: const ValueKey('album-switch-content'),
+                                    controller: controller,
+                                    onActivate: activateBrowsedAlbum,
+                                  )
+                                : const SizedBox.shrink(
+                                    key: ValueKey('cover-flow-content'),
+                                  ),
+                          ),
                         ],
                       ),
                     ),
@@ -911,7 +946,11 @@ class _CoverTapRegionState extends State<_CoverTapRegion> {
 }
 
 class _AlbumSwitchList extends StatelessWidget {
-  const _AlbumSwitchList({required this.controller, required this.onActivate});
+  const _AlbumSwitchList({
+    super.key,
+    required this.controller,
+    required this.onActivate,
+  });
 
   static const rowExtent = 76.0;
 
