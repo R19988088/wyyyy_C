@@ -146,36 +146,17 @@ void main() {
     expect(saved.last.soundStrength, .85);
   });
 
-  testWidgets('settings selects and saves the album switching view', (
+  testWidgets('settings omits the obsolete album switching view', (
     tester,
   ) async {
-    final saved = <bool>[];
     await tester.pumpWidget(
-      PlayerApp(
-        repository: InMemoryPlayerRepository.demo(),
-        saveListCoverSwitching: (value) async => saved.add(value),
-      ),
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await tester.pumpAndSettle();
 
-    final selector = tester.widget<SegmentedButton<bool>>(
-      find.byKey(const Key('album-switch-view')),
-    );
-    expect(selector.selected, {false});
-
-    await tester.tap(find.text('列表'));
-    await tester.pump();
-
-    expect(saved, [true]);
-    expect(
-      tester
-          .widget<SegmentedButton<bool>>(
-            find.byKey(const Key('album-switch-view')),
-          )
-          .selected,
-      {true},
-    );
+    expect(find.byKey(const Key('album-switch-view')), findsNothing);
+    expect(find.text('切换专辑时'), findsNothing);
   });
 
   testWidgets('center cover requires a double tap to start playback', (
@@ -692,10 +673,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        PlayerApp(
-          repository: InMemoryPlayerRepository(collections),
-          initialListCoverSwitching: true,
-        ),
+        PlayerApp(repository: InMemoryPlayerRepository(collections)),
       );
       expect(find.byKey(const Key('album-switch-list')), findsNothing);
 
@@ -756,10 +734,7 @@ void main() {
       ),
     );
     await tester.pumpWidget(
-      PlayerApp(
-        repository: InMemoryPlayerRepository(collections),
-        initialListCoverSwitching: true,
-      ),
+      PlayerApp(repository: InMemoryPlayerRepository(collections)),
     );
 
     final gesture = await tester.startGesture(
@@ -805,9 +780,7 @@ void main() {
           Track('track-2', 'Track 2', 'Artist 2'),
         ]),
       ]);
-      await tester.pumpWidget(
-        PlayerApp(repository: repository, initialListCoverSwitching: true),
-      );
+      await tester.pumpWidget(PlayerApp(repository: repository));
 
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const Key('cover-scrubber'))),
@@ -1146,10 +1119,7 @@ void main() {
     'list switching returns to the cover after a vertical wheel swipe',
     (tester) async {
       await tester.pumpWidget(
-        PlayerApp(
-          repository: InMemoryPlayerRepository.demo(),
-          initialListCoverSwitching: true,
-        ),
+        PlayerApp(repository: InMemoryPlayerRepository.demo()),
       );
 
       await tester.fling(
@@ -1174,10 +1144,7 @@ void main() {
 
   testWidgets('cancelling list switching returns to the cover', (tester) async {
     await tester.pumpWidget(
-      PlayerApp(
-        repository: InMemoryPlayerRepository.demo(),
-        initialListCoverSwitching: true,
-      ),
+      PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const Key('cover-scrubber'))),

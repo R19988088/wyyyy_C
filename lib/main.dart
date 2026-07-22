@@ -55,11 +55,6 @@ Future<void> main() async {
             preferences.setDouble('coverSoundStrength', value.soundStrength),
           ]);
         },
-        initialListCoverSwitching:
-            preferences.getBool('listCoverSwitching') ?? false,
-        saveListCoverSwitching: (value) async {
-          await preferences.setBool('listCoverSwitching', value);
-        },
       ),
     ),
   );
@@ -73,8 +68,6 @@ class PlayerApp extends StatefulWidget {
     this.saveDarkMode,
     this.initialCoverFeedback = CoverFeedbackSettings.defaults,
     this.saveCoverFeedback,
-    this.initialListCoverSwitching = false,
-    this.saveListCoverSwitching,
   });
 
   final PlayerRepository repository;
@@ -82,8 +75,6 @@ class PlayerApp extends StatefulWidget {
   final Future<bool> Function(bool value)? saveDarkMode;
   final CoverFeedbackSettings initialCoverFeedback;
   final Future<void> Function(CoverFeedbackSettings value)? saveCoverFeedback;
-  final bool initialListCoverSwitching;
-  final Future<void> Function(bool value)? saveListCoverSwitching;
 
   @override
   State<PlayerApp> createState() => _PlayerAppState();
@@ -94,7 +85,6 @@ class _PlayerAppState extends State<PlayerApp> {
       ? ThemeMode.dark
       : ThemeMode.light;
   late CoverFeedbackSettings _coverFeedback = widget.initialCoverFeedback;
-  late bool _listCoverSwitching = widget.initialListCoverSwitching;
 
   @override
   void initState() {
@@ -130,7 +120,6 @@ class _PlayerAppState extends State<PlayerApp> {
         home: Builder(
           builder: (context) => PlayerPage(
             repository: widget.repository,
-            listCoverSwitching: _listCoverSwitching,
             openSettings: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -138,7 +127,6 @@ class _PlayerAppState extends State<PlayerApp> {
                     repository: widget.repository,
                     dark: dark,
                     coverFeedback: _coverFeedback,
-                    listCoverSwitching: _listCoverSwitching,
                     onThemeChanged: (value) {
                       setState(
                         () => _themeMode = value
@@ -148,10 +136,6 @@ class _PlayerAppState extends State<PlayerApp> {
                       widget.saveDarkMode?.call(value);
                     },
                     onCoverFeedbackChanged: _setCoverFeedback,
-                    onListCoverSwitchingChanged: (value) {
-                      setState(() => _listCoverSwitching = value);
-                      widget.saveListCoverSwitching?.call(value);
-                    },
                   ),
                 ),
               );

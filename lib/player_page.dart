@@ -25,12 +25,10 @@ class PlayerPage extends StatefulWidget {
   const PlayerPage({
     super.key,
     required this.repository,
-    required this.listCoverSwitching,
     required this.openSettings,
   });
 
   final PlayerRepository repository;
-  final bool listCoverSwitching;
   final Future<void> Function() openSettings;
 
   @override
@@ -341,7 +339,6 @@ class _PlayerPageState extends State<PlayerPage>
                           _CoverMode(
                             controller: controller,
                             pages: pages,
-                            listCoverSwitching: widget.listCoverSwitching,
                             coverKeyFor: _coverKey,
                             keepCoverAlive: _keepCoverAlive,
                             onPageChanged: _browseTo,
@@ -421,7 +418,6 @@ class _CoverMode extends StatelessWidget {
   const _CoverMode({
     required this.controller,
     required this.pages,
-    required this.listCoverSwitching,
     required this.coverKeyFor,
     required this.keepCoverAlive,
     required this.onPageChanged,
@@ -443,7 +439,6 @@ class _CoverMode extends StatelessWidget {
 
   final PlayerController controller;
   final PageController pages;
-  final bool listCoverSwitching;
   final GlobalKey Function(MusicCollection collection) coverKeyFor;
   final bool Function(MusicCollection collection) keepCoverAlive;
   final ValueChanged<int> onPageChanged;
@@ -478,7 +473,7 @@ class _CoverMode extends StatelessWidget {
       screenSize.width * .94,
       pullAreaBottom,
     );
-    final showingSwitchList = listCoverSwitching && coverPressed;
+    final showingSwitchList = coverPressed;
     return IgnorePointer(
       ignoring: progress > 0,
       child: Column(
@@ -614,9 +609,7 @@ class _CoverMode extends StatelessWidget {
                     onStart: onScrubStart,
                     onUpdate: onScrubUpdate,
                     onEnd: onScrubEnd,
-                    onVerticalSwipe: listCoverSwitching
-                        ? () async {}
-                        : openList,
+                    onVerticalSwipe: () async {},
                   ),
                 ),
               ],
