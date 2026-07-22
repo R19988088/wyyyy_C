@@ -64,7 +64,6 @@ class GlassPlayer extends StatelessWidget {
                         child: Row(
                           children: [
                             Container(
-                              key: const Key('player-mini-cover'),
                               width: 44,
                               height: 44,
                               clipBehavior: Clip.antiAlias,
@@ -97,7 +96,6 @@ class GlassPlayer extends StatelessWidget {
                                 children: [
                                   Text(
                                     controller.track.title,
-                                    key: const Key('player-track-title'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(

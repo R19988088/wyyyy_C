@@ -157,7 +157,9 @@ void main() {
     expect(find.text('切换专辑时'), findsNothing);
   });
 
-  testWidgets('active cover ignores single and double taps', (tester) async {
+  testWidgets('center cover requires a double tap to start playback', (
+    tester,
+  ) async {
     final repository = InMemoryPlayerRepository(const [
       MusicCollection(
         'first',
@@ -198,7 +200,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('player-metadata')),
-        matching: find.text('First track'),
+        matching: find.text('Second track'),
       ),
       findsOneWidget,
     );
@@ -338,10 +340,8 @@ void main() {
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
 
-    final wheel = find.byKey(const Key('cover-scrubber'));
+    final wheel = find.byKey(const Key('cover-wheel'));
     final upward = await tester.startGesture(tester.getCenter(wheel));
-    await upward.moveBy(const Offset(0, -24));
-    await tester.pump(const Duration(milliseconds: 100));
     await upward.moveBy(const Offset(0, -24));
     await tester.pump(const Duration(milliseconds: 100));
     await upward.moveBy(const Offset(0, -24));
@@ -370,43 +370,6 @@ void main() {
     );
   });
 
-  testWidgets('wheel edge allows 15 percent travel and rebounds on release', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(400, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    final wheel = find.byKey(const Key('cover-scrubber'));
-    final gesture = await tester.startGesture(tester.getCenter(wheel));
-    for (var step = 1; step <= 12; step++) {
-      await gesture.moveBy(const Offset(0, 24));
-      await tester.pump(const Duration(milliseconds: 20));
-    }
-
-    final pressedSlide = tester.widget<AnimatedSlide>(
-      find.byKey(const Key('cover-edge-slide')),
-    );
-    final coverWidth = tester
-        .getSize(find.byKey(const Key('cover-art-0')))
-        .width;
-    expect(pressedSlide.offset.dx, closeTo(-coverWidth * .15 / 400, .01));
-
-    await gesture.up();
-    await tester.pump();
-    final releasedSlide = tester.widget<AnimatedSlide>(
-      find.byKey(const Key('cover-edge-slide')),
-    );
-    expect(releasedSlide.offset.dx, 0);
-    expect(releasedSlide.duration, const Duration(milliseconds: 300));
-  });
-
   testWidgets('wheel uses 45 degrees to distinguish vertical and horizontal', (
     tester,
   ) async {
@@ -420,7 +383,7 @@ void main() {
       PlayerApp(repository: InMemoryPlayerRepository.demo()),
     );
 
-    final wheel = find.byKey(const Key('cover-scrubber'));
+    final wheel = find.byKey(const Key('cover-wheel'));
     final vertical = await tester.startGesture(tester.getCenter(wheel));
     await vertical.moveBy(const Offset(24, -25));
     await tester.pump(const Duration(milliseconds: 100));
@@ -429,7 +392,10 @@ void main() {
     await vertical.up();
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('album-switch-selected-1')), findsOneWidget);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
 
     final horizontal = await tester.startGesture(tester.getCenter(wheel));
     await horizontal.moveBy(const Offset(25, -24));
@@ -559,7 +525,7 @@ void main() {
     final lowerRowRect = tester.getRect(
       find.byKey(const Key('album-switch-row-4')),
     );
-    expect(lowerRowRect.bottom, lessThanOrEqualTo(listRect.bottom));
+    expect(lowerRowRect.top, greaterThanOrEqualTo(listRect.bottom));
     await tester.pump(const Duration(milliseconds: 180));
     await tester.pumpAndSettle();
 
@@ -673,14 +639,15 @@ void main() {
     );
     await upward.moveBy(const Offset(0, -24));
     await tester.pump(const Duration(milliseconds: 100));
-    await upward.moveBy(const Offset(0, -24));
-    await tester.pump(const Duration(milliseconds: 100));
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
     await upward.up();
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
-    expect(find.byKey(const Key('album-switch-selected-1')), findsOneWidget);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
     expect(
       find.descendant(
         of: find.byKey(const Key('player-metadata')),
@@ -690,17 +657,18 @@ void main() {
     );
 
     final downward = await tester.startGesture(
-      tester.getCenter(find.byKey(const Key('album-switch-selected-1'))),
+      tester.getCenter(find.byKey(const Key('cover-art-1'))),
     );
-    await downward.moveBy(const Offset(0, 24));
-    await tester.pump(const Duration(milliseconds: 100));
     await downward.moveBy(const Offset(0, 24));
     await tester.pump(const Duration(milliseconds: 100));
     await downward.up();
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
-    expect(find.byKey(const Key('album-switch-selected-0')), findsOneWidget);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
     expect(
       find.descendant(
         of: find.byKey(const Key('player-metadata')),
@@ -776,53 +744,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('back from the active cover opens the album list', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      PlayerApp(repository: InMemoryPlayerRepository.demo()),
-    );
-
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
-    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
-  });
-
-  testWidgets(
-    'double tapping player cover or title returns to the active cover',
-    (tester) async {
-      await tester.pumpWidget(
-        PlayerApp(repository: InMemoryPlayerRepository.demo()),
-      );
-      final browse = await tester.startGesture(
-        tester.getCenter(find.byKey(const Key('cover-art-0'))),
-      );
-      await browse.moveBy(const Offset(0, -24));
-      await tester.pump(const Duration(milliseconds: 100));
-      await browse.moveBy(const Offset(0, -24));
-      await tester.pump(const Duration(milliseconds: 100));
-      await browse.up();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('album-switch-selected-1')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('player-mini-cover')));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.byKey(const Key('player-mini-cover')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('album-switch-list')), findsNothing);
-      expect(
-        tester.getCenter(find.byKey(const Key('cover-art-0'))).dx,
-        closeTo(
-          tester.getCenter(find.byKey(const Key('player-content'))).dx,
-          1,
-        ),
-      );
-    },
-  );
-
   testWidgets('vertical-first gestures do not toggle cover and track list', (
     tester,
   ) async {
@@ -840,14 +761,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
-    expect(find.byKey(const Key('album-switch-list')), findsOneWidget);
+    expect(
+      tester.getCenter(find.byKey(const Key('cover-art-1'))).dx,
+      closeTo(tester.getCenter(find.byKey(const Key('player-content'))).dx, 1),
+    );
 
     await tester.drag(
-      find.byKey(const Key('album-switch-selected-0')),
+      find.byKey(const Key('cover-art-1')),
       const Offset(240, 0),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fullscreen-track-list')), findsNothing);
+    final listGesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('fullscreen-track-list'))),
+    );
+    await listGesture.moveBy(const Offset(0, -60));
+    await listGesture.moveBy(const Offset(120, 40));
+    await listGesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fullscreen-track-list')), findsOneWidget);
   });
 
   testWidgets('returning to a cover preserves its image subtree', (
@@ -1156,11 +1088,9 @@ void main() {
     expect(tester.takeException(), isNull);
     await albumGesture.up();
     await tester.pumpAndSettle();
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
 
     await tester.drag(
-      find.byKey(const Key('cover-art-0')),
+      find.byKey(const Key('cover-art-1')),
       const Offset(240, 0),
     );
     await tester.pumpAndSettle();
