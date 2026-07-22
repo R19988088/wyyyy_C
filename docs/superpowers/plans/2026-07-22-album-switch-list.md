@@ -91,6 +91,10 @@
 
 预期：全部 PASS。
 
+- [ ] **步骤 9：让列表延伸到液态玻璃播放器下方**
+
+先增加 Widget 测试，断言 `album-switch-list` 的底边低于 `player-glass-frame` 的底边；确认测试因列表当前保留 180px 底部留白而失败。随后删除 `_AlbumSwitchList` 的底部留白，保持外层 `Stack` 中 `GlassPlayer` 的后绘制顺序不变，再运行 `flutter test test/player_app_test.dart --plain-name 'album switch list extends beneath the glass player'`，预期 PASS。
+
 ### 任务 3：回归验证、提交与远程 APK
 
 **文件：**
